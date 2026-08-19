@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>COIN HUB — Crypto Tracker & Supabase Cloud</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="glow-bg glow-1"></div>
+    <div class="glow-bg glow-2"></div>
+    <div class="glow-bg glow-3"></div>
+
+    <header class="header">
+        <div class="header-container">
+            <div class="logo-group">
+                <div class="logo-icon">🪙</div>
+                <div class="logo-text">
+                    <span class="brand-title">COIN<span class="highlight">HUB</span></span>
+                    <span class="brand-sub">Render + Supabase Ready</span>
+                </div>
+            </div>
+
+            <div class="header-actions">
+                <div id="dbStatusBadge" class="status-badge checking">
+                    <span class="pulse-dot"></span>
+                    <span id="dbStatusText">Проверка базы данных...</span>
+                </div>
+                <button class="btn btn-secondary" id="openSettingsBtn">
+                    ⚙️ Настройки Supabase
+                </button>
+                <a href="#deployGuide" class="btn btn-primary">
+                    🚀 Render & Supabase Гайд
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <main class="main-content">
+        <!-- Hero Section -->
+        <section class="hero-section">
+            <div class="hero-content">
+                <div class="badge-pill">⚡ Live Crypto Analytics & Cloud DB</div>
+                <h1 class="hero-title">
+                    Крипто Мониторинг & <span class="gradient-text">Supabase База</span>
+                </h1>
+                <p class="hero-subtitle">
+                    Готовый стек для быстрого деплоя на <strong>Render</strong> с интеграцией облачной БД <strong>Supabase</strong> и репозиторием на <strong>GitHub</strong>.
+                </p>
+                <div class="stats-ribbon">
+                    <div class="stat-card">
+                        <div class="stat-num" id="totalCoinsCount">8+</div>
+                        <div class="stat-label">Монет в мониторинге</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-num" id="watchlistCount">0</div>
+                        <div class="stat-label">Заметок в Watchlist</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-num text-success">99.9%</div>
+                        <div class="stat-label">Render Uptime</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Market Overview Section -->
+        <section class="section-container">
+            <div class="section-header">
+                <div>
+                    <h2 class="section-title">📊 Рынок Криптовалют</h2>
+                    <p class="section-desc">Цены в реальном времени с обновлением котировок</p>
+                </div>
+                <div class="search-box">
+                    <input type="text" id="coinSearchInput" placeholder="Поиск (BTC, ETH, TON, Solana)...">
+                    <button id="refreshCoinsBtn" class="refresh-btn" title="Обновить котировки">🔄</button>
+                </div>
+            </div>
+
+            <div class="coins-grid" id="coinsGrid">
+                <div class="loading-spinner">Загрузка котировок...</div>
+            </div>
+        </section>
+
+        <!-- Supabase Watchlist & Portfolio Notes -->
+        <section class="section-container">
+            <div class="section-header">
+                <div>
+                    <h2 class="section-title">☁️ Supabase Cloud Watchlist</h2>
+                    <p class="section-desc">Заметки и целевые цены, сохраняемые напрямую в PostgreSQL базу данных Supabase</p>
+                </div>
+                <button class="btn btn-primary" id="openAddModalBtn">+ Добавить монету в Watchlist</button>
+            </div>
+
+            <div class="watchlist-card">
+                <div class="table-responsive">
+                    <table class="custom-table">
+                        <thead>
+                            <tr>
+                                <th>Актив</th>
+                                <th>Имя</th>
+                                <th>Таргет цена ($)</th>
+                                <th>Заметка / Анализ</th>
+                                <th>Дата</th>
+                                <th>Действие</th>
+                            </tr>
+                        </thead>
+                        <tbody id="watchlistTableBody">
+                            <tr>
+                                <td colspan="6" class="text-center py-4">Загрузка данных из базы...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Deployment Architecture & Guide -->
+        <section class="section-container" id="deployGuide">
+            <div class="section-header">
+                <div>
+                    <h2 class="section-title">🛠️ Инструкция по развертыванию</h2>
+                    <p class="section-desc">Пошаговое руководство для подключения Supabase и деплоя на Render</p>
+                </div>
+            </div>
+
+            <div class="guide-grid">
+                <!-- Card 1: Supabase -->
+                <div class="guide-card">
+                    <div class="guide-badge">Шаг 1</div>
+                    <h3 class="guide-title">⚡ Настройка Supabase</h3>
+                    <ol class="guide-steps">
+                        <li>Перейдите на <a href="https://supabase.com" target="_blank" rel="noopener">supabase.com</a> и создайте новый проект.</li>
+                        <li>В левом меню откройте <strong>SQL Editor</strong> -> <strong>New Query</strong>.</li>
+                        <li>Вставьте код из файла <a href="/static/sql" target="_blank"><code>supabase_schema.sql</code></a> и нажмите <strong>Run</strong>.</li>
+                        <li>Перейдите в <strong>Project Settings -> API</strong> и скопируйте:
+                            <br>• <code>Project URL</code>
+                            <br>• <code>anon public key</code>
+                        </li>
+                    </ol>
+                </div>
+
+                <!-- Card 2: Render -->
+                <div class="guide-card">
+                    <div class="guide-badge">Шаг 2</div>
+                    <h3 class="guide-title">🚀 Деплой на Render</h3>
+                    <ol class="guide-steps">
+                        <li>Зайдите на <a href="https://dashboard.render.com" target="_blank" rel="noopener">render.com</a> и выберите <strong>New + -> Web Service</strong>.</li>
+                        <li>Подключите GitHub репозиторий проекта.</li>
+                        <li>Укажите параметры:
+                            <br>• <strong>Runtime:</strong> Python 3
+                            <br>• <strong>Build Command:</strong> <code>pip install -r requirements.txt</code>
+                            <br>• <strong>Start Command:</strong> <code>gunicorn app:app</code>
+                        </li>
+                        <li>В разделе <strong>Environment Variables</strong> добавьте переменные:
+                            <br>• <code>SUPABASE_URL</code>
+                            <br>• <code>SUPABASE_KEY</code>
+                        </li>
+                        <li>Нажмите <strong>Create Web Service</strong>! 🚀</li>
+                    </ol>
+                </div>
+
+                <!-- Card 3: GitHub -->
+                <div class="guide-card">
+                    <div class="guide-badge">Шаг 3</div>
+                    <h3 class="guide-title">🐙 GitHub & Auto-Deploy</h3>
+                    <ol class="guide-steps">
+                        <li>Репозиторий уже настроен и запушен на ваш GitHub.</li>
+                        <li>Каждый <code>git push</code> автоматически инициирует сборку и деплой на Render.</li>
+                        <li>Файл <code>render.yaml</code> в репозитории позволяет развернуть проект в 1 клик через Blueprint!</li>
+                    </ol>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Modal: Add Item to Watchlist -->
+    <div id="addModal" class="modal-backdrop hidden">
+        <div class="modal-dialog">
+            <div class="modal-header">
+                <h3>Добавить монету в Supabase Watchlist</h3>
+                <button class="close-btn" id="closeAddModalBtn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="addCoinForm">
+                    <div class="form-group">
+                        <label for="coinSymbol">Символ монеты (Тикер):</label>
+                        <input type="text" id="coinSymbol" class="form-input" placeholder="Например: BTC, SOL, TON" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="coinName">Название проекта:</label>
+                        <input type="text" id="coinName" class="form-input" placeholder="Например: Bitcoin, Solana">
+                    </div>
+                    <div class="form-group">
+                        <label for="coinTarget">Целевая цена ($):</label>
+                        <input type="number" step="any" id="coinTarget" class="form-input" placeholder="Например: 125000">
+                    </div>
+                    <div class="form-group">
+                        <label for="coinNotes">Заметка / Анализ:</label>
+                        <textarea id="coinNotes" class="form-input textarea" placeholder="Ваша стратегия, уровни поддержки/сопротивления..."></textarea>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" id="cancelAddBtn">Отмена</button>
+                        <button type="submit" class="btn btn-primary" id="saveWatchlistBtn">Сохранить в базу</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Supabase Settings & Live Tester -->
+    <div id="settingsModal" class="modal-backdrop hidden">
+        <div class="modal-dialog">
+            <div class="modal-header">
+                <h3>⚙️ Подключение к Supabase</h3>
+                <button class="close-btn" id="closeSettingsModalBtn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-desc">
+                    Введите ваши ключи от Supabase для проверки подключения и генерации <code>.env</code> настроек.
+                </p>
+                <div class="form-group">
+                    <label for="testSupabaseUrl">Supabase Project URL:</label>
+                    <input type="text" id="testSupabaseUrl" class="form-input" placeholder="https://xyzproject.supabase.co">
+                </div>
+                <div class="form-group">
+                    <label for="testSupabaseKey">Supabase Anon Key:</label>
+                    <input type="password" id="testSupabaseKey" class="form-input" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...">
+                </div>
+                <div id="testResultBox" class="test-result hidden"></div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" id="testConnectionBtn">🔍 Тестировать связь</button>
+                    <button type="button" class="btn btn-primary" id="closeSettingsBtn">Готово</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <div class="footer-content">
+            <p>© 2026 COIN HUB • Ready for Production on Render & Supabase</p>
+            <p class="text-muted">Разработано с акцентом на производительность и надежность.</p>
+        </div>
+    </footer>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
