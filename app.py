@@ -12,7 +12,7 @@ app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'default-dev-secret-key-12345
 
 # Supabase configuration
 SUPABASE_URL = os.getenv('SUPABASE_URL', '').strip()
-SUPABASE_KEY = os.getenv('SUPABASE_KEY', '').strip()
+SUPABASE_KEY = (os.getenv('SUPABASE_KEY', '') or os.getenv('SUPABASE_PUBLISHABLE_KEY', '') or os.getenv('SUPABASE_SECRET_KEY', '')).strip()
 
 supabase_client = None
 
