@@ -4,8 +4,12 @@ import requests
 from flask import Flask, render_template, jsonify, request
 from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
+# Load environment variables safely
+env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
+if os.path.exists(env_path):
+    load_dotenv(env_path)
+else:
+    load_dotenv()
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'default-dev-secret-key-12345')
