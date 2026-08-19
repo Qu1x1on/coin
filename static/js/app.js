@@ -1,414 +1,364 @@
-// Global State
-let coinsData = [];
-let watchlistData = [];
-let currentUser = null;
+// ---------- storage helpers & state ----------
+const MY_ID_KEY = "my-profile-id";
 
-// Telegram WebApp Instance
+let state = {
+    loading: true,
+    error: "",
+    coin: { name: "Дискойн", symbol: "🪙", value: 12.5 },
+    accounts: [],
+    txs: [],
+    myId: localStorage.getItem(MY_ID_KEY) || null,
+    editingValue: false
+};
+
+// Telegram WebApp SDK
 const tg = window.Telegram?.WebApp;
 
 // DOM Elements
-const userAvatar = document.getElementById('userAvatar');
-const userFullName = document.getElementById('userFullName');
-const userUsername = document.getElementById('userUsername');
-const userId = document.getElementById('userId');
-const userLanguage = document.getElementById('userLanguage');
-const userPremiumBadge = document.getElementById('userPremiumBadge');
-const tgPlatformBadge = document.getElementById('tgPlatformBadge');
-const authStatusText = document.getElementById('authStatusText');
+const loadingScreen = document.getElementById('loadingScreen');
+const loginScreen = document.getElementById('loginScreen');
+const mainScreen = document.getElementById('mainScreen');
 
-const coinsGrid = document.getElementById('coinsGrid');
-const watchlistTableBody = document.getElementById('watchlistTableBody');
-const dbStatusBadge = document.getElementById('dbStatusBadge');
-const dbStatusText = document.getElementById('dbStatusText');
-const coinSearchInput = document.getElementById('coinSearchInput');
-const refreshCoinsBtn = document.getElementById('refreshCoinsBtn');
+// Login Screen Elements
+const loginTag = document.getElementById('loginTag');
+const loginCoinName = document.getElementById('loginCoinName');
+const nameInput = document.getElementById('nameInput');
+const createProfileBtn = document.getElementById('createProfileBtn');
+const existingAccHint = document.getElementById('existingAccHint');
 
-// Modals
-const addModal = document.getElementById('addModal');
-const openAddModalBtn = document.getElementById('openAddModalBtn');
-const closeAddModalBtn = document.getElementById('closeAddModalBtn');
-const cancelAddBtn = document.getElementById('cancelAddBtn');
-const addCoinForm = document.getElementById('addCoinForm');
+// Header Coin Elements
+const coinTitleDisplay = document.getElementById('coinTitleDisplay');
+const coinSymbolText = document.getElementById('coinSymbolText');
+const coinRateText = document.getElementById('coinRateText');
+const coinValueDisplay = document.getElementById('coinValueDisplay');
+const editValueForm = document.getElementById('editValueForm');
+const valueInput = document.getElementById('valueInput');
+const cancelEditValueBtn = document.getElementById('cancelEditValueBtn');
 
-const settingsModal = document.getElementById('settingsModal');
-const openSettingsBtn = document.getElementById('openSettingsBtn');
-const closeSettingsModalBtn = document.getElementById('closeSettingsModalBtn');
-const closeSettingsBtn = document.getElementById('closeSettingsBtn');
-const testConnectionBtn = document.getElementById('testConnectionBtn');
-const testResultBox = document.getElementById('testResultBox');
-const setMenuButtonBtn = document.getElementById('setMenuButtonBtn');
+// Profile & Transfer Elements
+const profileNameDisplay = document.getElementById('profileNameDisplay');
+const profileBalanceDisplay = document.getElementById('profileBalanceDisplay');
+const switchProfileBtn = document.getElementById('switchProfileBtn');
+const transferForm = document.getElementById('transferForm');
+const toIdSelect = document.getElementById('toIdSelect');
+const transferAmountInput = document.getElementById('transferAmountInput');
+const txErrorMsg = document.getElementById('txErrorMsg');
+const txOkMsg = document.getElementById('txOkMsg');
 
-// 1. Initialize Telegram WebApp & Load User Profile
-async function initTelegramProfile() {
+// Lists
+const accountsCountTag = document.getElementById('accountsCountTag');
+const accountsList = document.getElementById('accountsList');
+const txCountTag = document.getElementById('txCountTag');
+const txEmptyMsg = document.getElementById('txEmptyMsg');
+const txList = document.getElementById('txList');
+const globalErrorBar = document.getElementById('globalErrorBar');
+
+// Helpers
+function fmt(n) {
+    return Number(n || 0).toLocaleString("ru-RU", { maximumFractionDigits: 4 });
+}
+
+function fmtTime(ts) {
+    const d = new Date(Number(ts));
+    return d.toLocaleString("ru-RU", {
+        day: "2-digit",
+        month: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+    });
+}
+
+// ---------- API Integration ----------
+async function loadData() {
+    try {
+        state.error = "";
+        const res = await fetch('/api/data');
+        const data = await res.json();
+        
+        if (data.coin) state.coin = data.coin;
+        if (data.accounts) state.accounts = data.accounts;
+        if (data.transactions) state.txs = data.transactions;
+    } catch (e) {
+        state.error = "Не удалось загрузить данные. Попробуйте обновить.";
+    } finally {
+        state.loading = false;
+        render();
+    }
+}
+
+// Telegram auto-login
+async function checkTelegramAuth() {
     if (tg) {
         try {
             tg.ready();
             tg.expand();
-            
-            // Set header color to match dark aesthetic
-            if (tg.setHeaderColor) {
-                tg.setHeaderColor('#0b0f19');
+            if (tg.setHeaderColor) tg.setHeaderColor('#F7F3EA');
+            if (tg.setBackgroundColor) tg.setBackgroundColor('#F7F3EA');
+        } catch (e) {}
+
+        const tgUser = tg.initDataUnsafe?.user;
+        if (tgUser && tgUser.id) {
+            try {
+                const res = await fetch('/api/profile', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        tg_user: tgUser,
+                        initData: tg.initData || ''
+                    })
+                });
+                const data = await res.json();
+                if (data.account) {
+                    state.myId = data.account.id;
+                    localStorage.setItem(MY_ID_KEY, data.account.id);
+                }
+            } catch (err) {
+                console.error("TG login error:", err);
             }
-            if (tg.setBackgroundColor) {
-                tg.setBackgroundColor('#0b0f19');
-            }
-        } catch (e) {
-            console.log('TG WebApp styling initialization note:', e);
         }
     }
-
-    const tgUser = tg?.initDataUnsafe?.user;
-    const initData = tg?.initData || '';
-    const platform = tg?.platform || 'browser';
-
-    tgPlatformBadge.textContent = platform;
-
-    if (tgUser && tgUser.id) {
-        // Authenticated through real Telegram Mini App
-        currentUser = tgUser;
-        renderUserProfile(tgUser, true);
-
-        // Send to backend for cryptographic HMAC verification & Supabase sync
-        try {
-            const res = await fetch('/api/telegram/auth', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ initData, user: tgUser })
-            });
-            const data = await res.json();
-            if (data.verified) {
-                authStatusText.textContent = '🟢 Подтвержден (Telegram HMAC)';
-            } else {
-                authStatusText.textContent = '🟢 Авторизован (Telegram ID)';
-            }
-        } catch (err) {
-            console.warn('Backend sync note:', err);
-        }
-    } else {
-        // Opened in regular web browser (Simulated Profile Mode)
-        const mockUser = {
-            id: 8514899291,
-            first_name: "Пользователь",
-            last_name: "Telegram",
-            username: "telegram_user",
-            language_code: "ru",
-            is_premium: true
-        };
-        currentUser = mockUser;
-        renderUserProfile(mockUser, false);
-        authStatusText.textContent = '🟡 Веб-режим (Демо профиль)';
-        tgPlatformBadge.textContent = 'Web Browser';
-    }
 }
 
-function renderUserProfile(user, isLive) {
-    const fullName = `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'Telegram User';
-    userFullName.textContent = fullName;
-    
-    if (user.username) {
-        userUsername.textContent = `@${user.username}`;
-    } else {
-        userUsername.textContent = 'Без @юзернейма';
-    }
+// Create or Switch Profile
+async function createProfile() {
+    const name = nameInput.value.trim();
+    if (!name) return;
 
-    userId.textContent = user.id || '—';
-
-    // Language display
-    const langMap = {
-        'ru': 'Русский (ru)',
-        'en': 'English (en)',
-        'uk': 'Українська (uk)',
-        'uz': 'O‘zbek (uz)',
-        'kz': 'Қазақ (kz)'
-    };
-    userLanguage.textContent = langMap[user.language_code] || user.language_code || 'ru';
-
-    // Premium Badge
-    if (user.is_premium) {
-        userPremiumBadge.classList.remove('hidden');
-    } else {
-        userPremiumBadge.classList.add('hidden');
-    }
-
-    // Avatar display (Photo or Initials)
-    if (user.photo_url) {
-        userAvatar.style.backgroundImage = `url('${user.photo_url}')`;
-        userAvatar.textContent = '';
-    } else {
-        userAvatar.style.backgroundImage = 'none';
-        const initials = ((user.first_name?.[0] || '') + (user.last_name?.[0] || user.first_name?.[1] || '')).toUpperCase() || 'TG';
-        userAvatar.textContent = initials;
-    }
-}
-
-// Copy User ID with Haptic Feedback
-userId.addEventListener('click', () => {
-    const text = userId.textContent;
-    if (navigator.clipboard) {
-        navigator.clipboard.writeText(text);
-    }
-    if (tg?.HapticFeedback) {
-        tg.HapticFeedback.notificationOccurred('success');
-    }
-    const original = userId.textContent;
-    userId.textContent = 'Скопировано! ✅';
-    setTimeout(() => { userId.textContent = original; }, 1500);
-});
-
-// Formatters
-function formatCurrency(val) {
-    if (val === null || val === undefined || isNaN(val)) return '—';
-    if (val < 1) return '$' + Number(val).toFixed(4);
-    if (val < 10) return '$' + Number(val).toFixed(2);
-    return '$' + Number(val).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function formatLargeNumber(val) {
-    if (!val) return '—';
-    if (val >= 1e12) return '$' + (val / 1e12).toFixed(2) + ' T';
-    if (val >= 1e9) return '$' + (val / 1e9).toFixed(2) + ' B';
-    if (val >= 1e6) return '$' + (val / 1e6).toFixed(2) + ' M';
-    return '$' + Number(val).toLocaleString();
-}
-
-// 2. Fetch Backend & Supabase Status
-async function checkSystemStatus() {
     try {
-        const res = await fetch('/api/status');
+        const res = await fetch('/api/profile', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name })
+        });
         const data = await res.json();
-        
-        if (data.supabase && data.supabase.connected) {
-            dbStatusBadge.className = 'status-badge connected';
-            dbStatusText.textContent = '🟢 Supabase активен';
-        } else if (data.supabase && data.supabase.configured) {
-            dbStatusBadge.className = 'status-badge memory';
-            dbStatusText.textContent = '🟡 Supabase подключен';
-        } else {
-            dbStatusBadge.className = 'status-badge memory';
-            dbStatusText.textContent = '🟡 Локальный режим';
+        if (data.account) {
+            state.myId = data.account.id;
+            localStorage.setItem(MY_ID_KEY, data.account.id);
+            await loadData();
+        } else if (data.error) {
+            alert(data.error);
         }
     } catch (err) {
-        dbStatusBadge.className = 'status-badge memory';
-        dbStatusText.textContent = '⚪ Автономный режим';
+        alert("Ошибка при входе");
     }
 }
 
-// 3. Fetch Live Coins
-async function fetchCoins() {
-    coinsGrid.innerHTML = '<div class="loading-spinner">Загрузка котировок...</div>';
-    try {
-        const res = await fetch('/api/coins');
-        const result = await res.json();
-        coinsData = result.data || [];
-        renderCoins(coinsData);
-    } catch (err) {
-        coinsGrid.innerHTML = '<p class="text-danger">Не удалось загрузить данные котировок.</p>';
-    }
+function switchProfile() {
+    state.myId = null;
+    localStorage.removeItem(MY_ID_KEY);
+    nameInput.value = "";
+    render();
 }
 
-function renderCoins(coins) {
-    if (!coins.length) {
-        coinsGrid.innerHTML = '<p class="text-muted">Монеты не найдены</p>';
-        return;
-    }
-
-    coinsGrid.innerHTML = coins.map(coin => {
-        const change = coin.price_change_percentage_24h || 0;
-        const isUp = change >= 0;
-        const badgeClass = isUp ? 'badge-up' : 'badge-down';
-        const changeSign = isUp ? '+' : '';
-        const changeFormatted = `${changeSign}${change.toFixed(2)}%`;
-
-        return `
-            <div class="coin-card">
-                <div class="coin-card-header">
-                    <div class="coin-identity">
-                        <div class="coin-icon">${coin.symbol.slice(0, 3)}</div>
-                        <div>
-                            <div class="coin-name">${coin.name}</div>
-                            <div class="coin-symbol">${coin.symbol}</div>
-                        </div>
-                    </div>
-                    <span class="coin-badge-change ${badgeClass}">${changeFormatted}</span>
-                </div>
-                <div class="coin-card-body">
-                    <div class="coin-price">${formatCurrency(coin.current_price)}</div>
-                    <div class="coin-stats-row">
-                        <span>24h High: ${formatCurrency(coin.high_24h)}</span>
-                        <span>24h Low: ${formatCurrency(coin.low_24h)}</span>
-                    </div>
-                </div>
-            </div>
-        `;
-    }).join('');
+// Edit Coin Value
+function startEditValue() {
+    valueInput.value = String(state.coin.value);
+    state.editingValue = true;
+    editValueForm.classList.remove('hidden');
+    coinValueDisplay.classList.add('hidden');
+    valueInput.focus();
 }
 
-// 4. Watchlist
-async function fetchWatchlist() {
-    try {
-        const res = await fetch('/api/watchlist');
-        const result = await res.json();
-        watchlistData = result.data || [];
-        renderWatchlist(watchlistData);
-    } catch (err) {
-        watchlistTableBody.innerHTML = `<tr><td colspan="5" class="text-danger text-center">Ошибка загрузки записей</td></tr>`;
-    }
+function cancelEditValue() {
+    state.editingValue = false;
+    editValueForm.classList.add('hidden');
+    coinValueDisplay.classList.remove('hidden');
 }
 
-function renderWatchlist(items) {
-    if (!items.length) {
-        watchlistTableBody.innerHTML = `<tr><td colspan="5" class="text-muted text-center py-3">Список пуст. Добавьте монету в базу.</td></tr>`;
-        return;
-    }
-
-    watchlistTableBody.innerHTML = items.map(item => {
-        return `
-            <tr>
-                <td><span class="symbol-tag">${item.symbol}</span></td>
-                <td><strong>${item.name || item.symbol}</strong></td>
-                <td>${item.target_price ? formatCurrency(item.target_price) : '<span class="text-muted">—</span>'}</td>
-                <td>${item.notes || '<span class="text-muted">—</span>'}</td>
-                <td>
-                    <button class="btn-danger-sm" onclick="deleteWatchlistItem('${item.id}')">✕</button>
-                </td>
-            </tr>
-        `;
-    }).join('');
-}
-
-async function deleteWatchlistItem(id) {
-    if (tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
-    if (!confirm('Удалить запись из Supabase?')) return;
-    try {
-        const res = await fetch(`/api/watchlist/${id}`, { method: 'DELETE' });
-        if (res.ok) {
-            await fetchWatchlist();
-        }
-    } catch (err) {
-        alert('Ошибка при удалении');
-    }
-}
-
-// Add item form
-addCoinForm.addEventListener('submit', async (e) => {
+async function submitValue(e) {
     e.preventDefault();
-    if (tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
-
-    const symbol = document.getElementById('coinSymbol').value.trim();
-    const name = document.getElementById('coinName').value.trim();
-    const target_price = document.getElementById('coinTarget').value;
-    const notes = document.getElementById('coinNotes').value.trim();
+    const v = parseFloat(valueInput.value);
+    if (!v || v <= 0) return;
 
     try {
-        const saveBtn = document.getElementById('saveWatchlistBtn');
-        saveBtn.disabled = true;
-        saveBtn.textContent = 'Сохранение...';
-
-        const res = await fetch('/api/watchlist', {
+        const res = await fetch('/api/coin', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ symbol, name, target_price, notes })
+            body: JSON.stringify({ value: v })
+        });
+        const data = await res.json();
+        if (data.coin) {
+            state.coin = data.coin;
+        }
+        cancelEditValue();
+        render();
+    } catch (err) {
+        alert("Не удалось сохранить курс");
+    }
+}
+
+// Transfer Coins
+async function submitTransfer(e) {
+    e.preventDefault();
+    txErrorMsg.classList.add('hidden');
+    txOkMsg.classList.add('hidden');
+    txErrorMsg.textContent = "";
+    txOkMsg.textContent = "";
+
+    const toId = toIdSelect.value;
+    const amount = transferAmountInput.value.trim();
+    const amt = parseFloat(amount);
+    const me = state.accounts.find(a => a.id === state.myId);
+
+    if (!toId) {
+        txErrorMsg.textContent = "Выберите получателя.";
+        txErrorMsg.classList.remove('hidden');
+        return;
+    }
+    if (toId === state.myId) {
+        txErrorMsg.textContent = "Нельзя перевести самому себе.";
+        txErrorMsg.classList.remove('hidden');
+        return;
+    }
+    if (!amt || amt <= 0) {
+        txErrorMsg.textContent = "Введите корректную сумму.";
+        txErrorMsg.classList.remove('hidden');
+        return;
+    }
+    if (!me || amt > me.balance) {
+        txErrorMsg.textContent = "Недостаточно монет на балансе.";
+        txErrorMsg.classList.remove('hidden');
+        return;
+    }
+
+    try {
+        const submitBtn = document.getElementById('submitTransferBtn');
+        submitBtn.disabled = true;
+
+        const res = await fetch('/api/transfer', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                from_id: state.myId,
+                to_id: toId,
+                amount: amt
+            })
         });
 
-        if (res.ok) {
+        const data = await res.json();
+
+        if (res.ok && data.status === "success") {
+            const recipient = state.accounts.find(a => a.id === toId);
+            transferAmountInput.value = "";
+            toIdSelect.value = "";
+            txOkMsg.textContent = `Переведено ${fmt(amt)} ${state.coin.symbol} → ${recipient ? recipient.name : ""}`;
+            txOkMsg.classList.remove('hidden');
+            
             if (tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
-            addCoinForm.reset();
-            addModal.classList.add('hidden');
-            await fetchWatchlist();
+            await loadData();
         } else {
-            const errData = await res.json();
-            alert('Ошибка: ' + (errData.error || 'Не удалось сохранить'));
+            txErrorMsg.textContent = data.error || "Ошибка при переводе.";
+            txErrorMsg.classList.remove('hidden');
         }
     } catch (err) {
-        alert('Ошибка соединения');
+        txErrorMsg.textContent = "Ошибка соединения.";
+        txErrorMsg.classList.remove('hidden');
     } finally {
-        const saveBtn = document.getElementById('saveWatchlistBtn');
-        saveBtn.disabled = false;
-        saveBtn.textContent = 'Сохранить';
+        document.getElementById('submitTransferBtn').disabled = false;
     }
-});
+}
 
-// Set Menu Button in Bot
-setMenuButtonBtn.addEventListener('click', async () => {
-    if (tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
-    setMenuButtonBtn.textContent = 'Настройка...';
-    try {
-        const currentUrl = window.location.origin;
-        const res = await fetch('/api/telegram/set-menu', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: currentUrl })
-        });
-        const result = await res.json();
-        if (result.ok) {
-            alert('✅ Кнопка меню успешно установлена в боте @fanat_mavro_robot!');
+// ---------- Render UI ----------
+function render() {
+    if (state.loading) {
+        loadingScreen.classList.remove('hidden');
+        loginScreen.classList.add('hidden');
+        mainScreen.classList.add('hidden');
+        return;
+    }
+
+    loadingScreen.classList.add('hidden');
+    const me = state.accounts.find(a => a.id === state.myId);
+
+    // Profile Setup Screen
+    if (!me) {
+        loginScreen.classList.remove('hidden');
+        mainScreen.classList.add('hidden');
+
+        loginTag.textContent = `${state.coin.symbol} ПРОФИЛЬ УЧАСТНИКА`;
+        loginCoinName.textContent = state.coin.name;
+
+        if (state.accounts.length > 0) {
+            existingAccHint.textContent = `Уже есть ${state.accounts.length} участник(ов). Введите существующее имя, чтобы вернуться к своему профилю.`;
         } else {
-            alert('Ответ: ' + (result.description || JSON.stringify(result)));
+            existingAccHint.textContent = "";
         }
-    } catch (err) {
-        alert('Ошибка при запросе к Telegram Bot API');
-    } finally {
-        setMenuButtonBtn.textContent = '📌 Прикрепить кнопку меню в бота';
+        return;
     }
-});
 
-// Search
-coinSearchInput.addEventListener('input', (e) => {
-    const query = e.target.value.toLowerCase().trim();
-    const filtered = coinsData.filter(c => 
-        c.name.toLowerCase().includes(query) || 
-        c.symbol.toLowerCase().includes(query)
-    );
-    renderCoins(filtered);
-});
+    // Main App Screen
+    loginScreen.classList.add('hidden');
+    mainScreen.classList.remove('hidden');
 
-refreshCoinsBtn.addEventListener('click', () => {
-    if (tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
-    fetchCoins();
-});
+    // 1. Header Coin Rate
+    coinTitleDisplay.textContent = `${state.coin.symbol} ${state.coin.name}`;
+    coinSymbolText.textContent = state.coin.symbol;
+    coinRateText.textContent = fmt(state.coin.value);
 
-// Modals
-openAddModalBtn.addEventListener('click', () => addModal.classList.remove('hidden'));
-closeAddModalBtn.addEventListener('click', () => addModal.classList.add('hidden'));
-cancelAddBtn.addEventListener('click', () => addModal.classList.add('hidden'));
+    // 2. Profile
+    profileNameDisplay.textContent = me.name;
+    profileBalanceDisplay.textContent = `${fmt(me.balance)} ${state.coin.symbol}`;
 
-openSettingsBtn.addEventListener('click', () => settingsModal.classList.remove('hidden'));
-closeSettingsModalBtn.addEventListener('click', () => settingsModal.classList.add('hidden'));
-closeSettingsBtn.addEventListener('click', () => settingsModal.classList.add('hidden'));
+    // Transfer Select options
+    const otherAccounts = state.accounts.filter(a => a.id !== state.myId);
+    toIdSelect.innerHTML = `<option value="">Получатель…</option>` + 
+        otherAccounts.map(a => `<option value="${a.id}">${a.name} (${fmt(a.balance)} ${state.coin.symbol})</option>`).join('');
 
-testConnectionBtn.addEventListener('click', async () => {
-    const url = document.getElementById('testSupabaseUrl').value.trim();
-    const key = document.getElementById('testSupabaseKey').value.trim();
+    transferAmountInput.placeholder = `Сумма в ${state.coin.symbol}`;
 
-    testResultBox.className = 'test-result';
-    testResultBox.classList.remove('hidden');
-    testResultBox.textContent = 'Проверка...';
+    // 3. Accounts List (Sorted by balance desc)
+    const sortedAccounts = [...state.accounts].sort((a, b) => b.balance - a.balance);
+    accountsCountTag.textContent = `УЧАСТНИКИ: ${state.accounts.length}`;
 
-    try {
-        const res = await fetch('/api/test-supabase', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url, key })
-        });
-        const result = await res.json();
+    accountsList.innerHTML = sortedAccounts.map(a => `
+        <div class="account-row ${a.id === state.myId ? 'is-me' : ''}">
+            <span>${a.name}${a.id === state.myId ? ' (вы)' : ''}</span>
+            <span>${fmt(a.balance)} ${state.coin.symbol}</span>
+        </div>
+    `).join('');
 
-        if (result.success) {
-            testResultBox.className = 'test-result success';
-            testResultBox.textContent = '✅ ' + result.message;
-        } else {
-            testResultBox.className = 'test-result error';
-            testResultBox.textContent = '❌ ' + result.message;
-        }
-    } catch (err) {
-        testResultBox.className = 'test-result error';
-        testResultBox.textContent = '❌ Ошибка запроса';
+    // 4. Transaction List
+    const recentTxs = state.txs.slice(0, 25);
+    txCountTag.textContent = `ТРАНЗАКЦИИ: ${state.txs.length}`;
+
+    if (recentTxs.length === 0) {
+        txEmptyMsg.classList.remove('hidden');
+        txList.innerHTML = "";
+    } else {
+        txEmptyMsg.classList.add('hidden');
+        txList.innerHTML = recentTxs.map(t => `
+            <div class="tx-row">
+                <span>${t.fromName} → ${t.toName}</span>
+                <span class="tx-meta">${fmt(t.amount)} ${state.coin.symbol} · ${fmtTime(t.timestamp)}</span>
+            </div>
+        `).join('');
     }
+
+    // Global Error
+    if (state.error) {
+        globalErrorBar.textContent = state.error;
+        globalErrorBar.classList.remove('hidden');
+    } else {
+        globalErrorBar.classList.add('hidden');
+    }
+}
+
+// ---------- Event Listeners ----------
+createProfileBtn.addEventListener('click', createProfile);
+nameInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') createProfile();
 });
+
+switchProfileBtn.addEventListener('click', switchProfile);
+
+coinValueDisplay.addEventListener('click', startEditValue);
+cancelEditValueBtn.addEventListener('click', cancelEditValue);
+editValueForm.addEventListener('submit', submitValue);
+
+transferForm.addEventListener('submit', submitTransfer);
 
 // Init
-document.addEventListener('DOMContentLoaded', () => {
-    initTelegramProfile();
-    checkSystemStatus();
-    fetchCoins();
-    fetchWatchlist();
+document.addEventListener('DOMContentLoaded', async () => {
+    await checkTelegramAuth();
+    await loadData();
 });
