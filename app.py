@@ -1,6 +1,7 @@
 import os
 import time
 import json
+import uuid
 import hmac
 import hashlib
 import urllib.parse
@@ -26,92 +27,27 @@ SUPABASE_KEY = (os.getenv('SUPABASE_KEY', '') or os.getenv('SUPABASE_PUBLISHABLE
 # Telegram Bot configuration
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '8514899291:AAE7F-rk6_X99izW-9LEKOkdlknNIHd2jgs').strip()
 
-supabase_client = None
+STARTING_BALANCE = 100.0
 
-def get_supabase_client(url=None, key=None):
-    """Initializes or returns the Supabase client safely."""
-    global supabase_client
-    u = url or SUPABASE_URL
-    k = key or SUPABASE_KEY
-    if not u or not k:
+# Memory fallback storage
+MEMORY_STATE = {
+    "coin": {"name": "Дискойн", "symbol": "🪙", "value": 12.5},
+    "accounts": [],
+    "transactions": []
+}
+
+def get_supabase_client():
+    if not SUPABASE_URL or not SUPABASE_KEY:
         return None
     try:
         from supabase import create_client
-        return create_client(u, k)
+        return create_client(SUPABASE_URL, SUPABASE_KEY)
     except Exception as e:
-        print(f"Error initializing Supabase client: {e}")
+        print(f"Supabase init error: {e}")
         return None
 
-# Initialize default client if env vars present
-if SUPABASE_URL and SUPABASE_KEY:
-    supabase_client = get_supabase_client()
-
-# In-memory storage fallback
-MEMORY_TELEGRAM_USERS = {}
-COIN_CACHE = {'timestamp': 0, 'data': []}
-
-FALLBACK_COINS = [
-    {
-        "id": "bitcoin", "symbol": "BTC", "name": "Bitcoin",
-        "current_price": 96420.50, "price_change_percentage_24h": 2.45,
-        "market_cap": 1890000000000, "total_volume": 42500000000,
-        "high_24h": 97800.00, "low_24h": 94100.00
-    },
-    {
-        "id": "ethereum", "symbol": "ETH", "name": "Ethereum",
-        "current_price": 2740.80, "price_change_percentage_24h": -1.15,
-        "market_cap": 330000000000, "total_volume": 19400000000,
-        "high_24h": 2820.00, "low_24h": 2710.00
-    },
-    {
-        "id": "solana", "symbol": "SOL", "name": "Solana",
-        "current_price": 184.25, "price_change_percentage_24h": 5.82,
-        "market_cap": 86000000000, "total_volume": 6800000000,
-        "high_24h": 188.00, "low_24h": 172.50
-    },
-    {
-        "id": "toncoin", "symbol": "TON", "name": "Toncoin",
-        "current_price": 5.85, "price_change_percentage_24h": 3.12,
-        "market_cap": 14500000000, "total_volume": 410000000,
-        "high_24h": 6.05, "low_24h": 5.60
-    },
-    {
-        "id": "binancecoin", "symbol": "BNB", "name": "BNB",
-        "current_price": 645.10, "price_change_percentage_24h": 0.85,
-        "market_cap": 94000000000, "total_volume": 1200000000,
-        "high_24h": 652.00, "low_24h": 638.00
-    },
-    {
-        "id": "ripple", "symbol": "XRP", "name": "XRP",
-        "current_price": 2.48, "price_change_percentage_24h": 8.64,
-        "market_cap": 142000000000, "total_volume": 9800000000,
-        "high_24h": 2.65, "low_24h": 2.25
-    }
-]
-
-MEMORY_WATCHLIST = [
-    {
-        "id": "demo-1", "symbol": "BTC", "name": "Bitcoin",
-        "target_price": 120000.0, "notes": "HODL! Основной актив портфеля.",
-        "created_at": "2026-02-20T10:00:00Z"
-    },
-    {
-        "id": "demo-2", "symbol": "ETH", "name": "Ethereum",
-        "target_price": 4500.0, "notes": "Стейкинг и L2 экосистемы",
-        "created_at": "2026-02-20T10:05:00Z"
-    },
-    {
-        "id": "demo-3", "symbol": "TON", "name": "Toncoin",
-        "target_price": 10.0, "notes": "Интеграция с Telegram Apps",
-        "created_at": "2026-02-20T10:10:00Z"
-    }
-]
-
 def verify_telegram_init_data(init_data: str, bot_token: str):
-    """
-    Validates Telegram WebApp initData string using HMAC-SHA256.
-    Returns (is_valid, user_data_dict)
-    """
+    """Validates Telegram WebApp initData string using HMAC-SHA256."""
     if not init_data or not bot_token:
         return False, None
     try:
@@ -120,11 +56,9 @@ def verify_telegram_init_data(init_data: str, bot_token: str):
         if not received_hash:
             return False, None
 
-        # Build data-check-string
         items = [f"{k}={v}" for k, v in sorted(parsed.items())]
         data_check_string = "\n".join(items)
 
-        # secret_key = HMAC_SHA256(bot_token, "WebAppData")
         secret_key = hmac.new(b"WebAppData", bot_token.encode('utf-8'), hashlib.sha256).digest()
         calculated_hash = hmac.new(secret_key, data_check_string.encode('utf-8'), hashlib.sha256).hexdigest()
 
@@ -132,307 +66,313 @@ def verify_telegram_init_data(init_data: str, bot_token: str):
         user_dict = json.loads(parsed.get('user', '{}')) if 'user' in parsed else None
         return is_valid, user_dict
     except Exception as e:
-        print(f"Telegram initData verification error: {e}")
+        print(f"Telegram verification error: {e}")
         return False, None
 
 @app.route('/')
 def index():
-    return render_template('index.html', bot_token=TELEGRAM_BOT_TOKEN)
+    return render_template('index.html')
 
 @app.route('/health')
 def health():
-    """Healthcheck endpoint for Render"""
     return jsonify({
         "status": "healthy",
-        "service": "coin-telegram-mini-app",
-        "timestamp": time.time(),
-        "supabase_configured": bool(SUPABASE_URL and SUPABASE_KEY),
-        "bot_configured": bool(TELEGRAM_BOT_TOKEN)
+        "service": "coin-tracker",
+        "timestamp": time.time()
     }), 200
 
-@app.route('/api/status')
-def status():
-    """Returns application status and Supabase connection state."""
-    has_env = bool(SUPABASE_URL and SUPABASE_KEY)
-    db_connected = False
-    error_msg = None
+@app.route('/api/data', methods=['GET'])
+def get_all_data():
+    """Returns coin config, all accounts, and recent transactions."""
+    client = get_supabase_client()
+    coin = MEMORY_STATE["coin"]
+    accounts = MEMORY_STATE["accounts"]
+    transactions = MEMORY_STATE["transactions"]
 
-    if has_env:
+    if client:
         try:
-            client = get_supabase_client()
-            if client:
-                client.table('watchlist').select('*').limit(1).execute()
-                db_connected = True
+            # Coin config
+            c_res = client.table('coin_config').select('*').limit(1).execute()
+            if c_res.data and len(c_res.data) > 0:
+                coin = {
+                    "name": c_res.data[0].get("name", "Дискойн"),
+                    "symbol": c_res.data[0].get("symbol", "🪙"),
+                    "value": float(c_res.data[0].get("value", 12.5))
+                }
+                MEMORY_STATE["coin"] = coin
+
+            # Accounts
+            a_res = client.table('accounts').select('*').order('balance', desc=True).execute()
+            if a_res.data is not None:
+                accounts = [
+                    {
+                        "id": str(a["id"]),
+                        "name": a["name"],
+                        "balance": float(a.get("balance", 0)),
+                        "telegram_id": a.get("telegram_id"),
+                        "username": a.get("username")
+                    }
+                    for a in a_res.data
+                ]
+                MEMORY_STATE["accounts"] = accounts
+
+            # Transactions
+            t_res = client.table('transactions').select('*').order('timestamp', desc=True).limit(50).execute()
+            if t_res.data is not None:
+                transactions = [
+                    {
+                        "id": str(t["id"]),
+                        "from": t["from_id"],
+                        "fromName": t["from_name"],
+                        "to": t["to_id"],
+                        "toName": t["to_name"],
+                        "amount": float(t["amount"]),
+                        "timestamp": int(t["timestamp"])
+                    }
+                    for t in t_res.data
+                ]
+                MEMORY_STATE["transactions"] = transactions
+
         except Exception as e:
-            error_msg = str(e)
-            db_connected = False
+            print(f"Supabase fetch error: {e}")
 
     return jsonify({
-        "app_name": "Coin Telegram WebApp",
-        "environment": "production" if os.getenv('RENDER') else "development",
-        "bot_name": "@fanat_mavro_robot",
-        "supabase": {
-            "configured": has_env,
-            "connected": db_connected,
-            "url": SUPABASE_URL[:18] + "..." if SUPABASE_URL else None,
-            "error": error_msg
-        }
+        "coin": coin,
+        "accounts": accounts,
+        "transactions": transactions
     })
 
-@app.route('/api/telegram/auth', methods=['POST'])
-def telegram_auth():
-    """
-    Receives Telegram WebApp initData or user payload, verifies signature,
-    and saves/updates user in Supabase database.
-    """
+@app.route('/api/profile', methods=['POST'])
+def handle_profile():
+    """Logs in or creates an account by name or Telegram info."""
     data = request.get_json() or {}
-    init_data = data.get('initData', '')
-    user_payload = data.get('user', {})
+    name = data.get('name', '').strip()
+    tg_user = data.get('tg_user')
+    init_data = data.get('initData')
 
-    is_verified = False
-    user_info = None
+    client = get_supabase_client()
 
-    if init_data and TELEGRAM_BOT_TOKEN:
-        is_verified, user_info = verify_telegram_init_data(init_data, TELEGRAM_BOT_TOKEN)
+    # If Telegram user provided
+    if tg_user and isinstance(tg_user, dict):
+        tg_id = tg_user.get('id')
+        first_name = tg_user.get('first_name', '').strip()
+        last_name = tg_user.get('last_name', '').strip()
+        username = tg_user.get('username', '').strip()
+        tg_name = f"{first_name} {last_name}".strip() or username or f"TG_{tg_id}"
 
-    # Fallback to direct client user payload (with verified=False flag if signature not provided)
-    if not user_info and user_payload:
-        user_info = user_payload
-        is_verified = bool(is_verified)
+        # 1. Search in Supabase
+        if client:
+            try:
+                res = client.table('accounts').select('*').eq('telegram_id', tg_id).execute()
+                if res.data and len(res.data) > 0:
+                    acc = res.data[0]
+                    return jsonify({"account": {
+                        "id": str(acc["id"]),
+                        "name": acc["name"],
+                        "balance": float(acc["balance"]),
+                        "telegram_id": acc.get("telegram_id"),
+                        "username": acc.get("username")
+                    }})
+            except Exception as e:
+                print(f"Supabase TG search error: {e}")
 
-    if not user_info:
-        return jsonify({"error": "No valid user information provided"}), 400
+        # 2. Check in memory
+        for a in MEMORY_STATE["accounts"]:
+            if a.get("telegram_id") == tg_id:
+                return jsonify({"account": a})
 
-    user_id = user_info.get('id')
-    first_name = user_info.get('first_name', '')
-    last_name = user_info.get('last_name', '')
-    username = user_info.get('username', '')
-    photo_url = user_info.get('photo_url', '')
-    language_code = user_info.get('language_code', 'ru')
-    is_premium = bool(user_info.get('is_premium', False))
-
-    saved_to_db = False
-
-    # Sync with Supabase if configured
-    if SUPABASE_URL and SUPABASE_KEY and user_id:
-        try:
-            client = get_supabase_client()
-            if client:
-                now_str = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
-                payload = {
-                    "id": user_id,
-                    "first_name": first_name,
-                    "last_name": last_name,
-                    "username": username,
-                    "photo_url": photo_url,
-                    "language_code": language_code,
-                    "is_premium": is_premium,
-                    "updated_at": now_str
-                }
-                client.table('telegram_users').upsert(payload).execute()
-                saved_to_db = True
-        except Exception as e:
-            print(f"Supabase user upsert error: {e}")
-
-    # In-memory save
-    if user_id:
-        MEMORY_TELEGRAM_USERS[str(user_id)] = {
-            "id": user_id,
-            "first_name": first_name,
-            "last_name": last_name,
+        # 3. Create new TG account
+        acc_id = f"acc_{uuid.uuid4().hex[:8]}"
+        new_acc = {
+            "id": acc_id,
+            "name": tg_name,
+            "telegram_id": tg_id,
             "username": username,
-            "photo_url": photo_url,
-            "language_code": language_code,
-            "is_premium": is_premium,
-            "verified": is_verified,
-            "last_seen": time.time()
+            "balance": STARTING_BALANCE
         }
+
+        if client:
+            try:
+                client.table('accounts').insert(new_acc).execute()
+            except Exception as e:
+                print(f"Supabase insert TG acc error: {e}")
+
+        MEMORY_STATE["accounts"].append(new_acc)
+        return jsonify({"account": new_acc})
+
+    # Manual Name login / creation
+    if not name:
+        return jsonify({"error": "Введите имя участника"}), 400
+
+    # Search existing
+    if client:
+        try:
+            res = client.table('accounts').select('*').ilike('name', name).execute()
+            if res.data and len(res.data) > 0:
+                acc = res.data[0]
+                return jsonify({"account": {
+                    "id": str(acc["id"]),
+                    "name": acc["name"],
+                    "balance": float(acc["balance"])
+                }})
+        except Exception as e:
+            print(f"Supabase search error: {e}")
+
+    for a in MEMORY_STATE["accounts"]:
+        if a["name"].lower() == name.lower():
+            return jsonify({"account": a})
+
+    # Create new
+    acc_id = f"acc_{uuid.uuid4().hex[:8]}"
+    new_acc = {
+        "id": acc_id,
+        "name": name,
+        "balance": STARTING_BALANCE
+    }
+
+    if client:
+        try:
+            client.table('accounts').insert(new_acc).execute()
+        except Exception as e:
+            print(f"Supabase insert error: {e}")
+
+    MEMORY_STATE["accounts"].append(new_acc)
+    return jsonify({"account": new_acc})
+
+@app.route('/api/coin', methods=['POST'])
+def update_coin():
+    """Updates the exchange rate of the coin."""
+    data = request.get_json() or {}
+    val = data.get('value')
+    name = data.get('name')
+    symbol = data.get('symbol')
+
+    try:
+        val = float(val)
+        if val <= 0:
+            return jsonify({"error": "Курс должен быть больше 0"}), 400
+    except (ValueError, TypeError):
+        return jsonify({"error": "Некорректное значение курса"}), 400
+
+    coin_data = MEMORY_STATE["coin"]
+    coin_data["value"] = val
+    if name: coin_data["name"] = name
+    if symbol: coin_data["symbol"] = symbol
+
+    client = get_supabase_client()
+    if client:
+        try:
+            client.table('coin_config').upsert({
+                "id": "main",
+                "name": coin_data["name"],
+                "symbol": coin_data["symbol"],
+                "value": val,
+                "updated_at": time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+            }).execute()
+        except Exception as e:
+            print(f"Supabase coin update error: {e}")
+
+    return jsonify({"status": "success", "coin": coin_data})
+
+@app.route('/api/transfer', methods=['POST'])
+def make_transfer():
+    """Transfers coins from one account to another and saves transaction."""
+    data = request.get_json() or {}
+    from_id = data.get('from_id')
+    to_id = data.get('to_id')
+    amount_str = data.get('amount')
+
+    if not from_id or not to_id:
+        return jsonify({"error": "Выберите получателя."}), 400
+
+    if from_id == to_id:
+        return jsonify({"error": "Нельзя перевести самому себе."}), 400
+
+    try:
+        amt = float(amount_str)
+        if amt <= 0:
+            return jsonify({"error": "Введите корректную сумму."}), 400
+    except (ValueError, TypeError):
+        return jsonify({"error": "Введите корректную сумму."}), 400
+
+    client = get_supabase_client()
+
+    # Find accounts
+    sender = None
+    recipient = None
+
+    if client:
+        try:
+            s_res = client.table('accounts').select('*').eq('id', from_id).execute()
+            r_res = client.table('accounts').select('*').eq('id', to_id).execute()
+            if s_res.data: sender = s_res.data[0]
+            if r_res.data: recipient = r_res.data[0]
+        except Exception as e:
+            print(f"Supabase fetch accounts error: {e}")
+
+    if not sender:
+        sender = next((a for a in MEMORY_STATE["accounts"] if a["id"] == from_id), None)
+    if not recipient:
+        recipient = next((a for a in MEMORY_STATE["accounts"] if a["id"] == to_id), None)
+
+    if not sender or not recipient:
+        return jsonify({"error": "Участник не найден."}), 404
+
+    sender_balance = float(sender.get("balance", 0))
+    recipient_balance = float(recipient.get("balance", 0))
+
+    if amt > sender_balance:
+        return jsonify({"error": "Недостаточно монет на балансе."}), 400
+
+    new_sender_balance = sender_balance - amt
+    new_recipient_balance = recipient_balance + amt
+
+    tx_id = f"tx_{uuid.uuid4().hex[:8]}"
+    now_ts = int(time.time() * 1000)
+
+    tx_record = {
+        "id": tx_id,
+        "from_id": from_id,
+        "from_name": sender.get("name", "?"),
+        "to_id": to_id,
+        "to_name": recipient.get("name", "?"),
+        "amount": amt,
+        "timestamp": now_ts
+    }
+
+    # Save to Supabase
+    if client:
+        try:
+            client.table('accounts').update({"balance": new_sender_balance}).eq('id', from_id).execute()
+            client.table('accounts').update({"balance": new_recipient_balance}).eq('id', to_id).execute()
+            client.table('transactions').insert(tx_record).execute()
+        except Exception as e:
+            print(f"Supabase transfer transaction error: {e}")
+
+    # Update in memory
+    for a in MEMORY_STATE["accounts"]:
+        if a["id"] == from_id: a["balance"] = new_sender_balance
+        if a["id"] == to_id: a["balance"] = new_recipient_balance
+
+    MEMORY_STATE["transactions"].insert(0, {
+        "id": tx_id,
+        "from": from_id,
+        "fromName": sender.get("name", "?"),
+        "to": to_id,
+        "toName": recipient.get("name", "?"),
+        "amount": amt,
+        "timestamp": now_ts
+    })
 
     return jsonify({
         "status": "success",
-        "verified": is_verified,
-        "saved_to_db": saved_to_db,
-        "user": {
-            "id": user_id,
-            "first_name": first_name,
-            "last_name": last_name,
-            "username": username,
-            "photo_url": photo_url,
-            "language_code": language_code,
-            "is_premium": is_premium
-        }
+        "tx": tx_record,
+        "sender_balance": new_sender_balance,
+        "recipient_balance": new_recipient_balance
     })
 
-@app.route('/api/telegram/set-menu', methods=['POST'])
-def set_telegram_menu():
-    """Configures the Telegram Bot's Menu Button to open this Mini App"""
-    data = request.get_json() or {}
-    web_app_url = data.get('url') or request.host_url
-    if not web_app_url.startswith('https://'):
-        # Telegram WebApps require https in production
-        web_app_url = f"https://{request.host}" if not request.is_secure else request.host_url
-
-    try:
-        tg_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/setChatMenuButton"
-        payload = {
-            "menu_button": {
-                "type": "web_app",
-                "text": "🪙 COIN HUB",
-                "web_app": {
-                    "url": web_app_url
-                }
-            }
-        }
-        resp = requests.post(tg_url, json=payload, timeout=5)
-        return jsonify(resp.json())
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-@app.route('/api/coins')
-def get_coins():
-    """Fetch live crypto market data with local caching and fallback."""
-    global COIN_CACHE
-    now = time.time()
-
-    if COIN_CACHE['data'] and (now - COIN_CACHE['timestamp'] < 45):
-        return jsonify({"source": "cache", "data": COIN_CACHE['data']})
-
-    try:
-        url = "https://api.coingecko.com/api/v3/coins/markets"
-        params = {
-            "vs_currency": "usd",
-            "ids": "bitcoin,ethereum,solana,the-open-network,binancecoin,ripple,cardano,avalanche-2,dogecoin,polkadot",
-            "order": "market_cap_desc",
-            "sparkline": "false",
-            "price_change_percentage": "24h"
-        }
-        resp = requests.get(url, params=params, timeout=4)
-        if resp.status_code == 200:
-            data = resp.json()
-            formatted_data = []
-            for item in data:
-                formatted_data.append({
-                    "id": item.get("id"),
-                    "symbol": item.get("symbol", "").upper(),
-                    "name": item.get("name"),
-                    "current_price": item.get("current_price", 0),
-                    "price_change_percentage_24h": item.get("price_change_percentage_24h", 0),
-                    "market_cap": item.get("market_cap", 0),
-                    "total_volume": item.get("total_volume", 0),
-                    "high_24h": item.get("high_24h", 0),
-                    "low_24h": item.get("low_24h", 0),
-                    "image": item.get("image")
-                })
-            COIN_CACHE = {'timestamp': now, 'data': formatted_data}
-            return jsonify({"source": "live", "data": formatted_data})
-    except Exception as e:
-        print(f"Live coin fetch failed, using fallback: {e}")
-
-    return jsonify({"source": "fallback", "data": FALLBACK_COINS})
-
-@app.route('/api/watchlist', methods=['GET'])
-def get_watchlist():
-    """Retrieve watchlist items from Supabase or memory fallback."""
-    if SUPABASE_URL and SUPABASE_KEY:
-        try:
-            client = get_supabase_client()
-            if client:
-                res = client.table('watchlist').select('*').order('created_at', desc=True).execute()
-                return jsonify({"source": "supabase", "data": res.data})
-        except Exception as e:
-            print(f"Supabase query error: {e}")
-            return jsonify({"source": "memory", "data": MEMORY_WATCHLIST, "warning": str(e)})
-
-    return jsonify({"source": "memory", "data": MEMORY_WATCHLIST})
-
-@app.route('/api/watchlist', methods=['POST'])
-def add_watchlist():
-    """Add a new coin/note to the watchlist."""
-    data = request.get_json() or {}
-    symbol = data.get('symbol', '').strip().upper()
-    name = data.get('name', '').strip() or symbol
-    target_price = data.get('target_price')
-    notes = data.get('notes', '').strip()
-
-    if not symbol:
-        return jsonify({"error": "Символ монеты обязателен"}), 400
-
-    try:
-        target_price = float(target_price) if target_price is not None and str(target_price).strip() else None
-    except ValueError:
-        target_price = None
-
-    if SUPABASE_URL and SUPABASE_KEY:
-        try:
-            client = get_supabase_client()
-            if client:
-                payload = {
-                    "symbol": symbol,
-                    "name": name,
-                    "target_price": target_price,
-                    "notes": notes
-                }
-                res = client.table('watchlist').insert(payload).execute()
-                return jsonify({"status": "success", "source": "supabase", "item": res.data[0] if res.data else payload})
-        except Exception as e:
-            return jsonify({"error": f"Supabase insert failed: {str(e)}"}), 500
-
-    import uuid
-    new_item = {
-        "id": str(uuid.uuid4()),
-        "symbol": symbol,
-        "name": name,
-        "target_price": target_price,
-        "notes": notes,
-        "created_at": time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
-    }
-    MEMORY_WATCHLIST.insert(0, new_item)
-    return jsonify({"status": "success", "source": "memory", "item": new_item})
-
-@app.route('/api/watchlist/<item_id>', methods=['DELETE'])
-def delete_watchlist(item_id):
-    """Delete a watchlist item."""
-    if SUPABASE_URL and SUPABASE_KEY:
-        try:
-            client = get_supabase_client()
-            if client:
-                client.table('watchlist').delete().eq('id', item_id).execute()
-                return jsonify({"status": "deleted", "source": "supabase", "id": item_id})
-        except Exception as e:
-            return jsonify({"error": f"Supabase delete failed: {str(e)}"}), 500
-
-    global MEMORY_WATCHLIST
-    MEMORY_WATCHLIST = [x for x in MEMORY_WATCHLIST if str(x.get('id')) != str(item_id)]
-    return jsonify({"status": "deleted", "source": "memory", "id": item_id})
-
-@app.route('/api/test-supabase', methods=['POST'])
-def test_supabase_credentials():
-    """Test custom Supabase credentials directly from the UI."""
-    data = request.get_json() or {}
-    url = data.get('url', '').strip()
-    key = data.get('key', '').strip()
-
-    if not url or not key:
-        return jsonify({"success": False, "message": "Укажите URL и anon/service_role ключ"}), 400
-
-    try:
-        from supabase import create_client
-        client = create_client(url, key)
-        res = client.table('watchlist').select('*').limit(1).execute()
-        return jsonify({
-            "success": True, 
-            "message": "Успешное подключение к Supabase! Таблица 'watchlist' доступна.",
-            "sample_count": len(res.data)
-        })
-    except Exception as e:
-        return jsonify({
-            "success": False, 
-            "message": f"Ошибка подключения: {str(e)}."
-        }), 400
-
-# Background Telegram Bot Polling (Replies to /start with Mini App button)
+# Background Telegram Bot Polling
 def run_telegram_bot_poller():
-    """Simple Telegram Bot polling thread to handle /start command"""
     if not TELEGRAM_BOT_TOKEN:
         return
     offset = 0
@@ -453,21 +393,18 @@ def run_telegram_bot_poller():
                     first_name = msg.get('from', {}).get('first_name', 'пользователь')
 
                     if text.startswith('/start'):
-                        # Send greeting with WebApp button
                         reply_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-                        
-                        # In production on Render, RENDER_EXTERNAL_URL is available
                         render_url = os.getenv('RENDER_EXTERNAL_URL', 'https://coin-app.onrender.com')
                         
                         reply_payload = {
                             "chat_id": chat_id,
-                            "text": f"👋 Привет, {first_name}!\n\nДобро пожаловать в 🪙 *COIN HUB Mini App*.\n\nНажмите кнопку ниже, чтобы открыть веб-приложение:",
+                            "text": f"👋 Привет, {first_name}!\n\nДобро пожаловать в 🪙 *Coin Tracker*.\n\nНажмите кнопку ниже, чтобы открыть приложение и управлять балансом:",
                             "parse_mode": "Markdown",
                             "reply_markup": {
                                 "inline_keyboard": [
                                     [
                                         {
-                                            "text": "🚀 Открыть COIN HUB",
+                                            "text": "🪙 Открыть Coin Tracker",
                                             "web_app": {"url": render_url}
                                         }
                                     ]
@@ -478,7 +415,6 @@ def run_telegram_bot_poller():
         except Exception as e:
             time.sleep(5)
 
-# Start bot poller in daemon thread
 if TELEGRAM_BOT_TOKEN:
     bot_thread = threading.Thread(target=run_telegram_bot_poller, daemon=True)
     bot_thread.start()
