@@ -3,219 +3,113 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>COIN HUB — Telegram Mini App</title>
-    <!-- Telegram WebApp JS SDK -->
+    <title>Дискойн — Профиль участника и переводы</title>
+    <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <!-- Google Fonts -->
+    <!-- IBM Plex Mono Font -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
-<body class="tma-body">
-    <div class="glow-bg glow-1"></div>
-    <div class="glow-bg glow-2"></div>
-    <div class="glow-bg glow-3"></div>
+<body>
+    <div id="app">
+        <!-- Loading State -->
+        <div id="loadingScreen" class="loading-container">
+            Загрузка…
+        </div>
 
-    <!-- Header Navigation -->
-    <header class="header">
-        <div class="header-container">
-            <div class="logo-group">
-                <div class="logo-icon">🪙</div>
-                <div class="logo-text">
-                    <span class="brand-title">COIN<span class="highlight">HUB</span></span>
-                    <span class="brand-sub">Telegram Mini App</span>
+        <!-- Profile Setup Screen (If not logged in) -->
+        <div id="loginScreen" class="screen-container hidden">
+            <div class="login-card">
+                <div class="login-header">
+                    <div class="tag-title" id="loginTag">🪙 ПРОФИЛЬ УЧАСТНИКА</div>
+                    <div class="login-coin-name" id="loginCoinName">Дискойн</div>
                 </div>
-            </div>
-
-            <div class="header-actions">
-                <div id="dbStatusBadge" class="status-badge checking">
-                    <span class="pulse-dot"></span>
-                    <span id="dbStatusText">Проверка связи...</span>
+                <div class="login-body">
+                    <div class="login-hint">Введите имя, чтобы войти или создать участника</div>
+                    <input type="text" id="nameInput" placeholder="Ваше имя" class="mono-input" />
+                    <button id="createProfileBtn" class="mono-btn btn-black">Войти</button>
+                    <div id="existingAccHint" class="login-subtext"></div>
                 </div>
-                <button class="btn btn-secondary btn-icon" id="openSettingsBtn" title="Настройки">
-                    ⚙️
-                </button>
             </div>
         </div>
-    </header>
 
-    <main class="main-content">
-        <!-- Telegram Profile Card (Active User) -->
-        <section class="tg-profile-section">
-            <div class="tg-profile-card" id="tgProfileCard">
-                <div class="tg-profile-header">
-                    <div class="tg-avatar-container">
-                        <div class="tg-avatar" id="userAvatar">TG</div>
-                        <span class="tg-verified-icon hidden" id="userPremiumBadge" title="Telegram Premium">⭐</span>
+        <!-- Main Dashboard Screen -->
+        <div id="mainScreen" class="main-wrapper hidden">
+            <div class="tracker-container">
+                <!-- Header: Coin Value -->
+                <div class="block header-block">
+                    <div class="tag-title">КУРС МОНЕТЫ</div>
+                    <div class="coin-title-row">
+                        <span class="coin-display-title" id="coinTitleDisplay">🪙 Дискойн</span>
                     </div>
-                    <div class="tg-user-details">
-                        <div class="tg-name-row">
-                            <h2 class="tg-user-name" id="userFullName">Загрузка профиля...</h2>
-                            <span class="tg-badge" id="tgPlatformBadge">Telegram</span>
+
+                    <div id="coinValueDisplay" class="coin-value-line" title="Нажмите, чтобы изменить курс">
+                        1 <span id="coinSymbolText">🪙</span> = <span id="coinRateText">12.50</span> ₽
+                        <span class="edit-label">(изменить)</span>
+                    </div>
+
+                    <!-- Edit Value Form -->
+                    <form id="editValueForm" class="edit-rate-form hidden">
+                        <input type="number" step="any" id="valueInput" class="mono-input rate-input" />
+                        <button type="submit" class="mono-btn btn-black btn-sm">ОК</button>
+                        <button type="button" id="cancelEditValueBtn" class="mono-btn btn-outline btn-sm">Отмена</button>
+                    </form>
+                </div>
+
+                <!-- Profile + Transfer Band -->
+                <div class="block profile-block">
+                    <div class="profile-header-row">
+                        <div>
+                            <div class="tag-title tag-dark">МОЙ ПРОФИЛЬ</div>
+                            <div class="profile-name" id="profileNameDisplay">Участник</div>
+                            <div class="profile-balance" id="profileBalanceDisplay">100 🪙</div>
                         </div>
-                        <div class="tg-username" id="userUsername">@username</div>
+                        <button id="switchProfileBtn" class="mono-btn btn-outline btn-xs">сменить</button>
+                    </div>
+
+                    <!-- Transfer Form -->
+                    <div class="transfer-section">
+                        <div class="tag-title tag-dark transfer-tag">ПЕРЕВОД МОНЕТ</div>
+                        <form id="transferForm" class="transfer-form">
+                            <select id="toIdSelect" class="mono-input mono-select">
+                                <option value="">Получатель…</option>
+                            </select>
+
+                            <div class="transfer-input-group">
+                                <input type="number" step="any" id="transferAmountInput" placeholder="Сумма в 🪙" class="mono-input amount-input" inputmode="decimal" />
+                                <button type="submit" id="submitTransferBtn" class="mono-btn btn-black">Отправить</button>
+                            </div>
+
+                            <div id="txErrorMsg" class="alert-msg error-msg hidden"></div>
+                            <div id="txOkMsg" class="alert-msg success-msg hidden"></div>
+                        </form>
                     </div>
                 </div>
 
-                <div class="tg-profile-meta">
-                    <div class="meta-item">
-                        <span class="meta-label">ID Пользователя</span>
-                        <span class="meta-value copyable" id="userId" title="Нажмите, чтобы скопировать">8514899291</span>
-                    </div>
-                    <div class="meta-item">
-                        <span class="meta-label">Язык</span>
-                        <span class="meta-value" id="userLanguage">Русский (ru)</span>
-                    </div>
-                    <div class="meta-item">
-                        <span class="meta-label">Статус входа</span>
-                        <span class="meta-value text-success" id="authStatusText">🟢 Авторизован</span>
+                <!-- Participants Table -->
+                <div class="block accounts-block">
+                    <div class="tag-title tag-green" id="accountsCountTag">УЧАСТНИКИ: 0</div>
+                    <div id="accountsList" class="accounts-list">
+                        <!-- Rows rendered dynamically -->
                     </div>
                 </div>
 
-                <div class="tg-sync-banner" id="tgSyncBanner">
-                    <span class="sync-icon">☁️</span>
-                    <span>Профиль автоматически синхронизирован с базой <strong>Supabase</strong></span>
-                </div>
-            </div>
-        </section>
-
-        <!-- Market Overview Section -->
-        <section class="section-container">
-            <div class="section-header">
-                <div>
-                    <h2 class="section-title">📊 Рынок Криптовалют</h2>
-                    <p class="section-desc">Котировки с автообновлением</p>
-                </div>
-                <div class="search-box">
-                    <input type="text" id="coinSearchInput" placeholder="Поиск (BTC, ETH, TON)...">
-                    <button id="refreshCoinsBtn" class="refresh-btn" title="Обновить">🔄</button>
-                </div>
-            </div>
-
-            <div class="coins-grid" id="coinsGrid">
-                <div class="loading-spinner">Загрузка котировок...</div>
-            </div>
-        </section>
-
-        <!-- Supabase Watchlist & Portfolio Notes -->
-        <section class="section-container">
-            <div class="section-header">
-                <div>
-                    <h2 class="section-title">☁️ Supabase Cloud Watchlist</h2>
-                    <p class="section-desc">Сохранение таргетов прямо в облачную базу</p>
-                </div>
-                <button class="btn btn-primary" id="openAddModalBtn">+ Добавить монету</button>
-            </div>
-
-            <div class="watchlist-card">
-                <div class="table-responsive">
-                    <table class="custom-table">
-                        <thead>
-                            <tr>
-                                <th>Актив</th>
-                                <th>Имя</th>
-                                <th>Таргет ($)</th>
-                                <th>Заметка</th>
-                                <th>Действие</th>
-                            </tr>
-                        </thead>
-                        <tbody id="watchlistTableBody">
-                            <tr>
-                                <td colspan="5" class="text-center py-4">Загрузка из базы...</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </section>
-
-        <!-- Telegram Bot Info Section -->
-        <section class="section-container">
-            <div class="bot-info-card">
-                <div class="bot-info-header">
-                    <div class="bot-icon">🤖</div>
-                    <div>
-                        <h3 class="bot-title">Telegram Бот: <span class="highlight">@fanat_mavro_robot</span></h3>
-                        <p class="text-muted">Бот подключен и настроен для работы с Mini App</p>
+                <!-- Transaction Log -->
+                <div class="block tx-block">
+                    <div class="tag-title" id="txCountTag">ТРАНЗАКЦИИ: 0</div>
+                    <div id="txEmptyMsg" class="tx-empty">Транзакций пока нет.</div>
+                    <div id="txList" class="tx-list">
+                        <!-- Transactions rendered dynamically -->
                     </div>
                 </div>
-                <div class="bot-actions-row">
-                    <a href="https://t.me/fanat_mavro_robot" target="_blank" class="btn btn-primary">
-                        ✈️ Открыть бота в Telegram
-                    </a>
-                    <button class="btn btn-secondary" id="setMenuButtonBtn">
-                        📌 Прикрепить кнопку меню в бота
-                    </button>
-                </div>
-            </div>
-        </section>
-    </main>
 
-    <!-- Modal: Add Item to Watchlist -->
-    <div id="addModal" class="modal-backdrop hidden">
-        <div class="modal-dialog">
-            <div class="modal-header">
-                <h3>Добавить монету в Supabase</h3>
-                <button class="close-btn" id="closeAddModalBtn">&times;</button>
-            </div>
-            <div class="modal-body">
-                <form id="addCoinForm">
-                    <div class="form-group">
-                        <label for="coinSymbol">Символ монеты (Тикер):</label>
-                        <input type="text" id="coinSymbol" class="form-input" placeholder="Например: TON, BTC, SOL" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="coinName">Название:</label>
-                        <input type="text" id="coinName" class="form-input" placeholder="Например: Toncoin, Solana">
-                    </div>
-                    <div class="form-group">
-                        <label for="coinTarget">Целевая цена ($):</label>
-                        <input type="number" step="any" id="coinTarget" class="form-input" placeholder="10.5">
-                    </div>
-                    <div class="form-group">
-                        <label for="coinNotes">Заметка / Аналитика:</label>
-                        <textarea id="coinNotes" class="form-input textarea" placeholder="Стратегия покупки или продажи..."></textarea>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" id="cancelAddBtn">Отмена</button>
-                        <button type="submit" class="btn btn-primary" id="saveWatchlistBtn">Сохранить</button>
-                    </div>
-                </form>
+                <!-- Global Error Bar -->
+                <div id="globalErrorBar" class="error-bar hidden"></div>
             </div>
         </div>
     </div>
-
-    <!-- Modal: Settings -->
-    <div id="settingsModal" class="modal-backdrop hidden">
-        <div class="modal-dialog">
-            <div class="modal-header">
-                <h3>⚙️ Параметры подключения</h3>
-                <button class="close-btn" id="closeSettingsModalBtn">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="form-group">
-                    <label for="testSupabaseUrl">Supabase URL:</label>
-                    <input type="text" id="testSupabaseUrl" class="form-input" placeholder="https://uigojqsnyiekutccyscw.supabase.co">
-                </div>
-                <div class="form-group">
-                    <label for="testSupabaseKey">Supabase Key:</label>
-                    <input type="password" id="testSupabaseKey" class="form-input" placeholder="sb_publishable_...">
-                </div>
-                <div id="testResultBox" class="test-result hidden"></div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" id="testConnectionBtn">🔍 Проверить базу</button>
-                    <button type="button" class="btn btn-primary" id="closeSettingsBtn">Закрыть</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <footer class="footer">
-        <div class="footer-content">
-            <p>© 2026 COIN HUB • Telegram Mini App & Supabase</p>
-        </div>
-    </footer>
 
     <script src="/static/js/app.js"></script>
 </body>
