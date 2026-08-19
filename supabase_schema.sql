@@ -1,60 +1,49 @@
 -- =========================================================
--- Supabase Schema for Coin App (Watchlist & Portfolio Notes)
+-- Supabase Schema for Coin Tracker (Участники, Переводы, Курс)
 -- =========================================================
--- Выполните этот SQL скрипт в панели Supabase:
--- Project Dashboard -> SQL Editor -> New Query -> Run
 
-CREATE TABLE IF NOT EXISTS public.watchlist (
-    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    symbol VARCHAR(20) NOT NULL,
-    name VARCHAR(100) NOT NULL,
-    target_price NUMERIC,
-    notes TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+-- 1. Таблица конфигурации монеты
+CREATE TABLE IF NOT EXISTS public.coin_config (
+    id VARCHAR(50) PRIMARY KEY DEFAULT 'main',
+    name VARCHAR(100) NOT NULL DEFAULT 'Дискойн',
+    symbol VARCHAR(20) NOT NULL DEFAULT '🪙',
+    value NUMERIC NOT NULL DEFAULT 12.5,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- Открываем политику чтения и записи (RLS) для публичного демо:
-ALTER TABLE public.watchlist ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Allow public read access" 
-ON public.watchlist 
-FOR SELECT 
-USING (true);
-
-CREATE POLICY "Allow public insert access" 
-ON public.watchlist 
-FOR INSERT 
-WITH CHECK (true);
-
-CREATE POLICY "Allow public delete access" 
-ON public.watchlist 
-FOR DELETE 
-USING (true);
-
--- Таблица пользователей Telegram:
-CREATE TABLE IF NOT EXISTS public.telegram_users (
-    id BIGINT PRIMARY KEY, -- Telegram User ID
-    first_name VARCHAR(255),
-    last_name VARCHAR(255),
+-- 2. Таблица участников и их балансов
+CREATE TABLE IF NOT EXISTS public.accounts (
+    id VARCHAR(100) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    telegram_id BIGINT,
     username VARCHAR(255),
-    photo_url TEXT,
-    language_code VARCHAR(10),
-    is_premium BOOLEAN DEFAULT FALSE,
-    visits_count INT DEFAULT 1,
+    balance NUMERIC NOT NULL DEFAULT 100.0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
-ALTER TABLE public.telegram_users ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow public read users" ON public.telegram_users FOR SELECT USING (true);
-CREATE POLICY "Allow public insert users" ON public.telegram_users FOR INSERT WITH CHECK (true);
-CREATE POLICY "Allow public update users" ON public.telegram_users FOR UPDATE USING (true);
+-- 3. Таблица истории всех транзакций
+CREATE TABLE IF NOT EXISTS public.transactions (
+    id VARCHAR(100) PRIMARY KEY,
+    from_id VARCHAR(100) NOT NULL,
+    from_name VARCHAR(255) NOT NULL,
+    to_id VARCHAR(100) NOT NULL,
+    to_name VARCHAR(255) NOT NULL,
+    amount NUMERIC NOT NULL,
+    timestamp BIGINT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
 
--- Начальные тестовые данные (по желанию):
-INSERT INTO public.watchlist (symbol, name, target_price, notes)
-VALUES 
-    ('BTC', 'Bitcoin', 120000.00, 'HODL! Сильный уровень поддержки'),
-    ('ETH', 'Ethereum', 4500.00, 'Стейкинг и DeFi экосистема'),
-    ('SOL', 'Solana', 300.00, 'Быстрый рост транзакций и экосистемы'),
-    ('TON', 'Toncoin', 10.00, 'Интеграция с Telegram')
-ON CONFLICT DO NOTHING;
+-- Открываем RLS политики для публичного доступа
+ALTER TABLE public.coin_config ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.accounts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow public all coin_config" ON public.coin_config FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public all accounts" ON public.accounts FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public all transactions" ON public.transactions FOR ALL USING (true) WITH CHECK (true);
+
+-- Начальные данные
+INSERT INTO public.coin_config (id, name, symbol, value)
+VALUES ('main', 'Дискойн', '🪙', 12.5)
+ON CONFLICT (id) DO NOTHING;
