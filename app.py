@@ -1,5 +1,10 @@
 import os
 import time
+import json
+import hmac
+import hashlib
+import urllib.parse
+import threading
 import requests
 from flask import Flask, render_template, jsonify, request
 from dotenv import load_dotenv
@@ -18,6 +23,9 @@ app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'default-dev-secret-key-12345
 SUPABASE_URL = os.getenv('SUPABASE_URL', '').strip()
 SUPABASE_KEY = (os.getenv('SUPABASE_KEY', '') or os.getenv('SUPABASE_PUBLISHABLE_KEY', '') or os.getenv('SUPABASE_SECRET_KEY', '')).strip()
 
+# Telegram Bot configuration
+TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '8514899291:AAE7F-rk6_X99izW-9LEKOkdlknNIHd2jgs').strip()
+
 supabase_client = None
 
 def get_supabase_client(url=None, key=None):
@@ -28,7 +36,7 @@ def get_supabase_client(url=None, key=None):
     if not u or not k:
         return None
     try:
-        from supabase import create_client, Client
+        from supabase import create_client
         return create_client(u, k)
     except Exception as e:
         print(f"Error initializing Supabase client: {e}")
@@ -38,151 +46,108 @@ def get_supabase_client(url=None, key=None):
 if SUPABASE_URL and SUPABASE_KEY:
     supabase_client = get_supabase_client()
 
-# Cache for coin prices to avoid rate limiting
-COIN_CACHE = {
-    'timestamp': 0,
-    'data': []
-}
+# In-memory storage fallback
+MEMORY_TELEGRAM_USERS = {}
+COIN_CACHE = {'timestamp': 0, 'data': []}
 
 FALLBACK_COINS = [
     {
-        "id": "bitcoin",
-        "symbol": "BTC",
-        "name": "Bitcoin",
-        "current_price": 96420.50,
-        "price_change_percentage_24h": 2.45,
-        "market_cap": 1890000000000,
-        "total_volume": 42500000000,
-        "high_24h": 97800.00,
-        "low_24h": 94100.00,
-        "sparkline": [94100, 94600, 95200, 95900, 96100, 96420]
+        "id": "bitcoin", "symbol": "BTC", "name": "Bitcoin",
+        "current_price": 96420.50, "price_change_percentage_24h": 2.45,
+        "market_cap": 1890000000000, "total_volume": 42500000000,
+        "high_24h": 97800.00, "low_24h": 94100.00
     },
     {
-        "id": "ethereum",
-        "symbol": "ETH",
-        "name": "Ethereum",
-        "current_price": 2740.80,
-        "price_change_percentage_24h": -1.15,
-        "market_cap": 330000000000,
-        "total_volume": 19400000000,
-        "high_24h": 2820.00,
-        "low_24h": 2710.00,
-        "sparkline": [2810, 2790, 2760, 2730, 2720, 2740]
+        "id": "ethereum", "symbol": "ETH", "name": "Ethereum",
+        "current_price": 2740.80, "price_change_percentage_24h": -1.15,
+        "market_cap": 330000000000, "total_volume": 19400000000,
+        "high_24h": 2820.00, "low_24h": 2710.00
     },
     {
-        "id": "solana",
-        "symbol": "SOL",
-        "name": "Solana",
-        "current_price": 184.25,
-        "price_change_percentage_24h": 5.82,
-        "market_cap": 86000000000,
-        "total_volume": 6800000000,
-        "high_24h": 188.00,
-        "low_24h": 172.50,
-        "sparkline": [173, 176, 178, 181, 183, 184]
+        "id": "solana", "symbol": "SOL", "name": "Solana",
+        "current_price": 184.25, "price_change_percentage_24h": 5.82,
+        "market_cap": 86000000000, "total_volume": 6800000000,
+        "high_24h": 188.00, "low_24h": 172.50
     },
     {
-        "id": "toncoin",
-        "symbol": "TON",
-        "name": "Toncoin",
-        "current_price": 5.85,
-        "price_change_percentage_24h": 3.12,
-        "market_cap": 14500000000,
-        "total_volume": 410000000,
-        "high_24h": 6.05,
-        "low_24h": 5.60,
-        "sparkline": [5.6, 5.68, 5.75, 5.82, 5.8, 5.85]
+        "id": "toncoin", "symbol": "TON", "name": "Toncoin",
+        "current_price": 5.85, "price_change_percentage_24h": 3.12,
+        "market_cap": 14500000000, "total_volume": 410000000,
+        "high_24h": 6.05, "low_24h": 5.60
     },
     {
-        "id": "binancecoin",
-        "symbol": "BNB",
-        "name": "BNB",
-        "current_price": 645.10,
-        "price_change_percentage_24h": 0.85,
-        "market_cap": 94000000000,
-        "total_volume": 1200000000,
-        "high_24h": 652.00,
-        "low_24h": 638.00,
-        "sparkline": [640, 642, 641, 644, 646, 645]
+        "id": "binancecoin", "symbol": "BNB", "name": "BNB",
+        "current_price": 645.10, "price_change_percentage_24h": 0.85,
+        "market_cap": 94000000000, "total_volume": 1200000000,
+        "high_24h": 652.00, "low_24h": 638.00
     },
     {
-        "id": "ripple",
-        "symbol": "XRP",
-        "name": "XRP",
-        "current_price": 2.48,
-        "price_change_percentage_24h": 8.64,
-        "market_cap": 142000000000,
-        "total_volume": 9800000000,
-        "high_24h": 2.65,
-        "low_24h": 2.25,
-        "sparkline": [2.26, 2.31, 2.38, 2.45, 2.52, 2.48]
-    },
-    {
-        "id": "cardano",
-        "symbol": "ADA",
-        "name": "Cardano",
-        "current_price": 0.78,
-        "price_change_percentage_24h": -0.45,
-        "market_cap": 27500000000,
-        "total_volume": 850000000,
-        "high_24h": 0.82,
-        "low_24h": 0.76,
-        "sparkline": [0.81, 0.79, 0.77, 0.78, 0.77, 0.78]
-    },
-    {
-        "id": "avalanche-2",
-        "symbol": "AVAX",
-        "name": "Avalanche",
-        "current_price": 32.40,
-        "price_change_percentage_24h": 4.15,
-        "market_cap": 13200000000,
-        "total_volume": 590000000,
-        "high_24h": 33.50,
-        "low_24h": 30.80,
-        "sparkline": [31.0, 31.4, 31.8, 32.2, 32.8, 32.4]
+        "id": "ripple", "symbol": "XRP", "name": "XRP",
+        "current_price": 2.48, "price_change_percentage_24h": 8.64,
+        "market_cap": 142000000000, "total_volume": 9800000000,
+        "high_24h": 2.65, "low_24h": 2.25
     }
 ]
 
-# In-memory watchlist fallback when Supabase is not connected
 MEMORY_WATCHLIST = [
     {
-        "id": "demo-1",
-        "symbol": "BTC",
-        "name": "Bitcoin",
-        "target_price": 120000.0,
-        "notes": "HODL! Основной актив портфеля.",
+        "id": "demo-1", "symbol": "BTC", "name": "Bitcoin",
+        "target_price": 120000.0, "notes": "HODL! Основной актив портфеля.",
         "created_at": "2026-02-20T10:00:00Z"
     },
     {
-        "id": "demo-2",
-        "symbol": "ETH",
-        "name": "Ethereum",
-        "target_price": 4500.0,
-        "notes": "Стейкинг и L2 экосистемы",
+        "id": "demo-2", "symbol": "ETH", "name": "Ethereum",
+        "target_price": 4500.0, "notes": "Стейкинг и L2 экосистемы",
         "created_at": "2026-02-20T10:05:00Z"
     },
     {
-        "id": "demo-3",
-        "symbol": "TON",
-        "name": "Toncoin",
-        "target_price": 10.0,
-        "notes": "Интеграция с Telegram Apps",
+        "id": "demo-3", "symbol": "TON", "name": "Toncoin",
+        "target_price": 10.0, "notes": "Интеграция с Telegram Apps",
         "created_at": "2026-02-20T10:10:00Z"
     }
 ]
 
+def verify_telegram_init_data(init_data: str, bot_token: str):
+    """
+    Validates Telegram WebApp initData string using HMAC-SHA256.
+    Returns (is_valid, user_data_dict)
+    """
+    if not init_data or not bot_token:
+        return False, None
+    try:
+        parsed = dict(urllib.parse.parse_qsl(init_data, keep_blank_values=True))
+        received_hash = parsed.pop('hash', None)
+        if not received_hash:
+            return False, None
+
+        # Build data-check-string
+        items = [f"{k}={v}" for k, v in sorted(parsed.items())]
+        data_check_string = "\n".join(items)
+
+        # secret_key = HMAC_SHA256(bot_token, "WebAppData")
+        secret_key = hmac.new(b"WebAppData", bot_token.encode('utf-8'), hashlib.sha256).digest()
+        calculated_hash = hmac.new(secret_key, data_check_string.encode('utf-8'), hashlib.sha256).hexdigest()
+
+        is_valid = hmac.compare_digest(received_hash, calculated_hash)
+        user_dict = json.loads(parsed.get('user', '{}')) if 'user' in parsed else None
+        return is_valid, user_dict
+    except Exception as e:
+        print(f"Telegram initData verification error: {e}")
+        return False, None
+
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return render_template('index.html', bot_token=TELEGRAM_BOT_TOKEN)
 
 @app.route('/health')
 def health():
     """Healthcheck endpoint for Render"""
     return jsonify({
         "status": "healthy",
-        "service": "coin-web-app",
+        "service": "coin-telegram-mini-app",
         "timestamp": time.time(),
-        "supabase_configured": bool(SUPABASE_URL and SUPABASE_KEY)
+        "supabase_configured": bool(SUPABASE_URL and SUPABASE_KEY),
+        "bot_configured": bool(TELEGRAM_BOT_TOKEN)
     }), 200
 
 @app.route('/api/status')
@@ -196,15 +161,16 @@ def status():
         try:
             client = get_supabase_client()
             if client:
-                res = client.table('watchlist').select('*').limit(1).execute()
+                client.table('watchlist').select('*').limit(1).execute()
                 db_connected = True
         except Exception as e:
             error_msg = str(e)
             db_connected = False
 
     return jsonify({
-        "app_name": "Coin Platform",
+        "app_name": "Coin Telegram WebApp",
         "environment": "production" if os.getenv('RENDER') else "development",
+        "bot_name": "@fanat_mavro_robot",
         "supabase": {
             "configured": has_env,
             "connected": db_connected,
@@ -213,18 +179,125 @@ def status():
         }
     })
 
+@app.route('/api/telegram/auth', methods=['POST'])
+def telegram_auth():
+    """
+    Receives Telegram WebApp initData or user payload, verifies signature,
+    and saves/updates user in Supabase database.
+    """
+    data = request.get_json() or {}
+    init_data = data.get('initData', '')
+    user_payload = data.get('user', {})
+
+    is_verified = False
+    user_info = None
+
+    if init_data and TELEGRAM_BOT_TOKEN:
+        is_verified, user_info = verify_telegram_init_data(init_data, TELEGRAM_BOT_TOKEN)
+
+    # Fallback to direct client user payload (with verified=False flag if signature not provided)
+    if not user_info and user_payload:
+        user_info = user_payload
+        is_verified = bool(is_verified)
+
+    if not user_info:
+        return jsonify({"error": "No valid user information provided"}), 400
+
+    user_id = user_info.get('id')
+    first_name = user_info.get('first_name', '')
+    last_name = user_info.get('last_name', '')
+    username = user_info.get('username', '')
+    photo_url = user_info.get('photo_url', '')
+    language_code = user_info.get('language_code', 'ru')
+    is_premium = bool(user_info.get('is_premium', False))
+
+    saved_to_db = False
+
+    # Sync with Supabase if configured
+    if SUPABASE_URL and SUPABASE_KEY and user_id:
+        try:
+            client = get_supabase_client()
+            if client:
+                now_str = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+                payload = {
+                    "id": user_id,
+                    "first_name": first_name,
+                    "last_name": last_name,
+                    "username": username,
+                    "photo_url": photo_url,
+                    "language_code": language_code,
+                    "is_premium": is_premium,
+                    "updated_at": now_str
+                }
+                client.table('telegram_users').upsert(payload).execute()
+                saved_to_db = True
+        except Exception as e:
+            print(f"Supabase user upsert error: {e}")
+
+    # In-memory save
+    if user_id:
+        MEMORY_TELEGRAM_USERS[str(user_id)] = {
+            "id": user_id,
+            "first_name": first_name,
+            "last_name": last_name,
+            "username": username,
+            "photo_url": photo_url,
+            "language_code": language_code,
+            "is_premium": is_premium,
+            "verified": is_verified,
+            "last_seen": time.time()
+        }
+
+    return jsonify({
+        "status": "success",
+        "verified": is_verified,
+        "saved_to_db": saved_to_db,
+        "user": {
+            "id": user_id,
+            "first_name": first_name,
+            "last_name": last_name,
+            "username": username,
+            "photo_url": photo_url,
+            "language_code": language_code,
+            "is_premium": is_premium
+        }
+    })
+
+@app.route('/api/telegram/set-menu', methods=['POST'])
+def set_telegram_menu():
+    """Configures the Telegram Bot's Menu Button to open this Mini App"""
+    data = request.get_json() or {}
+    web_app_url = data.get('url') or request.host_url
+    if not web_app_url.startswith('https://'):
+        # Telegram WebApps require https in production
+        web_app_url = f"https://{request.host}" if not request.is_secure else request.host_url
+
+    try:
+        tg_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/setChatMenuButton"
+        payload = {
+            "menu_button": {
+                "type": "web_app",
+                "text": "🪙 COIN HUB",
+                "web_app": {
+                    "url": web_app_url
+                }
+            }
+        }
+        resp = requests.post(tg_url, json=payload, timeout=5)
+        return jsonify(resp.json())
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
 @app.route('/api/coins')
 def get_coins():
     """Fetch live crypto market data with local caching and fallback."""
     global COIN_CACHE
     now = time.time()
 
-    # Return cached data if fresh (less than 45 seconds)
     if COIN_CACHE['data'] and (now - COIN_CACHE['timestamp'] < 45):
         return jsonify({"source": "cache", "data": COIN_CACHE['data']})
 
     try:
-        # Fetch from CoinGecko API
         url = "https://api.coingecko.com/api/v3/coins/markets"
         params = {
             "vs_currency": "usd",
@@ -255,7 +328,6 @@ def get_coins():
     except Exception as e:
         print(f"Live coin fetch failed, using fallback: {e}")
 
-    # Fallback data
     return jsonify({"source": "fallback", "data": FALLBACK_COINS})
 
 @app.route('/api/watchlist', methods=['GET'])
@@ -283,7 +355,7 @@ def add_watchlist():
     notes = data.get('notes', '').strip()
 
     if not symbol:
-        return jsonify({"error": "Символ монеты обязателен (напр. BTC, ETH)"}), 400
+        return jsonify({"error": "Символ монеты обязателен"}), 400
 
     try:
         target_price = float(target_price) if target_price is not None and str(target_price).strip() else None
@@ -305,7 +377,6 @@ def add_watchlist():
         except Exception as e:
             return jsonify({"error": f"Supabase insert failed: {str(e)}"}), 500
 
-    # Memory fallback
     import uuid
     new_item = {
         "id": str(uuid.uuid4()),
@@ -330,7 +401,6 @@ def delete_watchlist(item_id):
         except Exception as e:
             return jsonify({"error": f"Supabase delete failed: {str(e)}"}), 500
 
-    # Memory fallback
     global MEMORY_WATCHLIST
     MEMORY_WATCHLIST = [x for x in MEMORY_WATCHLIST if str(x.get('id')) != str(item_id)]
     return jsonify({"status": "deleted", "source": "memory", "id": item_id})
@@ -357,8 +427,61 @@ def test_supabase_credentials():
     except Exception as e:
         return jsonify({
             "success": False, 
-            "message": f"Ошибка подключения: {str(e)}. Проверьте URL, Ключ и создана ли таблица 'watchlist'."
+            "message": f"Ошибка подключения: {str(e)}."
         }), 400
+
+# Background Telegram Bot Polling (Replies to /start with Mini App button)
+def run_telegram_bot_poller():
+    """Simple Telegram Bot polling thread to handle /start command"""
+    if not TELEGRAM_BOT_TOKEN:
+        return
+    offset = 0
+    while True:
+        try:
+            url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates"
+            params = {"offset": offset, "timeout": 20}
+            resp = requests.get(url, params=params, timeout=25)
+            if resp.status_code == 200:
+                updates = resp.json().get('result', [])
+                for update in updates:
+                    offset = update['update_id'] + 1
+                    msg = update.get('message')
+                    if not msg:
+                        continue
+                    text = msg.get('text', '')
+                    chat_id = msg['chat']['id']
+                    first_name = msg.get('from', {}).get('first_name', 'пользователь')
+
+                    if text.startswith('/start'):
+                        # Send greeting with WebApp button
+                        reply_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+                        
+                        # In production on Render, RENDER_EXTERNAL_URL is available
+                        render_url = os.getenv('RENDER_EXTERNAL_URL', 'https://coin-app.onrender.com')
+                        
+                        reply_payload = {
+                            "chat_id": chat_id,
+                            "text": f"👋 Привет, {first_name}!\n\nДобро пожаловать в 🪙 *COIN HUB Mini App*.\n\nНажмите кнопку ниже, чтобы открыть веб-приложение:",
+                            "parse_mode": "Markdown",
+                            "reply_markup": {
+                                "inline_keyboard": [
+                                    [
+                                        {
+                                            "text": "🚀 Открыть COIN HUB",
+                                            "web_app": {"url": render_url}
+                                        }
+                                    ]
+                                ]
+                            }
+                        }
+                        requests.post(reply_url, json=reply_payload, timeout=5)
+        except Exception as e:
+            time.sleep(5)
+
+# Start bot poller in daemon thread
+if TELEGRAM_BOT_TOKEN:
+    bot_thread = threading.Thread(target=run_telegram_bot_poller, daemon=True)
+    bot_thread.start()
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))
