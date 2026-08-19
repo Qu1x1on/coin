@@ -31,6 +31,25 @@ ON public.watchlist
 FOR DELETE 
 USING (true);
 
+-- Таблица пользователей Telegram:
+CREATE TABLE IF NOT EXISTS public.telegram_users (
+    id BIGINT PRIMARY KEY, -- Telegram User ID
+    first_name VARCHAR(255),
+    last_name VARCHAR(255),
+    username VARCHAR(255),
+    photo_url TEXT,
+    language_code VARCHAR(10),
+    is_premium BOOLEAN DEFAULT FALSE,
+    visits_count INT DEFAULT 1,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+ALTER TABLE public.telegram_users ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow public read users" ON public.telegram_users FOR SELECT USING (true);
+CREATE POLICY "Allow public insert users" ON public.telegram_users FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public update users" ON public.telegram_users FOR UPDATE USING (true);
+
 -- Начальные тестовые данные (по желанию):
 INSERT INTO public.watchlist (symbol, name, target_price, notes)
 VALUES 
