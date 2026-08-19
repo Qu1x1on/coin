@@ -15,5 +15,7 @@ services:
         sync: false
       - key: SUPABASE_KEY
         sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
       - key: SECRET_KEY
         generateValue: true
