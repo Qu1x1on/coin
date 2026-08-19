@@ -2,68 +2,80 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>COIN HUB — Crypto Tracker & Supabase Cloud</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>COIN HUB — Telegram Mini App</title>
+    <!-- Telegram WebApp JS SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
-<body>
+<body class="tma-body">
     <div class="glow-bg glow-1"></div>
     <div class="glow-bg glow-2"></div>
     <div class="glow-bg glow-3"></div>
 
+    <!-- Header Navigation -->
     <header class="header">
         <div class="header-container">
             <div class="logo-group">
                 <div class="logo-icon">🪙</div>
                 <div class="logo-text">
                     <span class="brand-title">COIN<span class="highlight">HUB</span></span>
-                    <span class="brand-sub">Render + Supabase Ready</span>
+                    <span class="brand-sub">Telegram Mini App</span>
                 </div>
             </div>
 
             <div class="header-actions">
                 <div id="dbStatusBadge" class="status-badge checking">
                     <span class="pulse-dot"></span>
-                    <span id="dbStatusText">Проверка базы данных...</span>
+                    <span id="dbStatusText">Проверка связи...</span>
                 </div>
-                <button class="btn btn-secondary" id="openSettingsBtn">
-                    ⚙️ Настройки Supabase
+                <button class="btn btn-secondary btn-icon" id="openSettingsBtn" title="Настройки">
+                    ⚙️
                 </button>
-                <a href="#deployGuide" class="btn btn-primary">
-                    🚀 Render & Supabase Гайд
-                </a>
             </div>
         </div>
     </header>
 
     <main class="main-content">
-        <!-- Hero Section -->
-        <section class="hero-section">
-            <div class="hero-content">
-                <div class="badge-pill">⚡ Live Crypto Analytics & Cloud DB</div>
-                <h1 class="hero-title">
-                    Крипто Мониторинг & <span class="gradient-text">Supabase База</span>
-                </h1>
-                <p class="hero-subtitle">
-                    Готовый стек для быстрого деплоя на <strong>Render</strong> с интеграцией облачной БД <strong>Supabase</strong> и репозиторием на <strong>GitHub</strong>.
-                </p>
-                <div class="stats-ribbon">
-                    <div class="stat-card">
-                        <div class="stat-num" id="totalCoinsCount">8+</div>
-                        <div class="stat-label">Монет в мониторинге</div>
+        <!-- Telegram Profile Card (Active User) -->
+        <section class="tg-profile-section">
+            <div class="tg-profile-card" id="tgProfileCard">
+                <div class="tg-profile-header">
+                    <div class="tg-avatar-container">
+                        <div class="tg-avatar" id="userAvatar">TG</div>
+                        <span class="tg-verified-icon hidden" id="userPremiumBadge" title="Telegram Premium">⭐</span>
                     </div>
-                    <div class="stat-card">
-                        <div class="stat-num" id="watchlistCount">0</div>
-                        <div class="stat-label">Заметок в Watchlist</div>
+                    <div class="tg-user-details">
+                        <div class="tg-name-row">
+                            <h2 class="tg-user-name" id="userFullName">Загрузка профиля...</h2>
+                            <span class="tg-badge" id="tgPlatformBadge">Telegram</span>
+                        </div>
+                        <div class="tg-username" id="userUsername">@username</div>
                     </div>
-                    <div class="stat-card">
-                        <div class="stat-num text-success">99.9%</div>
-                        <div class="stat-label">Render Uptime</div>
+                </div>
+
+                <div class="tg-profile-meta">
+                    <div class="meta-item">
+                        <span class="meta-label">ID Пользователя</span>
+                        <span class="meta-value copyable" id="userId" title="Нажмите, чтобы скопировать">8514899291</span>
                     </div>
+                    <div class="meta-item">
+                        <span class="meta-label">Язык</span>
+                        <span class="meta-value" id="userLanguage">Русский (ru)</span>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-label">Статус входа</span>
+                        <span class="meta-value text-success" id="authStatusText">🟢 Авторизован</span>
+                    </div>
+                </div>
+
+                <div class="tg-sync-banner" id="tgSyncBanner">
+                    <span class="sync-icon">☁️</span>
+                    <span>Профиль автоматически синхронизирован с базой <strong>Supabase</strong></span>
                 </div>
             </div>
         </section>
@@ -73,11 +85,11 @@
             <div class="section-header">
                 <div>
                     <h2 class="section-title">📊 Рынок Криптовалют</h2>
-                    <p class="section-desc">Цены в реальном времени с обновлением котировок</p>
+                    <p class="section-desc">Котировки с автообновлением</p>
                 </div>
                 <div class="search-box">
-                    <input type="text" id="coinSearchInput" placeholder="Поиск (BTC, ETH, TON, Solana)...">
-                    <button id="refreshCoinsBtn" class="refresh-btn" title="Обновить котировки">🔄</button>
+                    <input type="text" id="coinSearchInput" placeholder="Поиск (BTC, ETH, TON)...">
+                    <button id="refreshCoinsBtn" class="refresh-btn" title="Обновить">🔄</button>
                 </div>
             </div>
 
@@ -91,9 +103,9 @@
             <div class="section-header">
                 <div>
                     <h2 class="section-title">☁️ Supabase Cloud Watchlist</h2>
-                    <p class="section-desc">Заметки и целевые цены, сохраняемые напрямую в PostgreSQL базу данных Supabase</p>
+                    <p class="section-desc">Сохранение таргетов прямо в облачную базу</p>
                 </div>
-                <button class="btn btn-primary" id="openAddModalBtn">+ Добавить монету в Watchlist</button>
+                <button class="btn btn-primary" id="openAddModalBtn">+ Добавить монету</button>
             </div>
 
             <div class="watchlist-card">
@@ -103,15 +115,14 @@
                             <tr>
                                 <th>Актив</th>
                                 <th>Имя</th>
-                                <th>Таргет цена ($)</th>
-                                <th>Заметка / Анализ</th>
-                                <th>Дата</th>
+                                <th>Таргет ($)</th>
+                                <th>Заметка</th>
                                 <th>Действие</th>
                             </tr>
                         </thead>
                         <tbody id="watchlistTableBody">
                             <tr>
-                                <td colspan="6" class="text-center py-4">Загрузка данных из базы...</td>
+                                <td colspan="5" class="text-center py-4">Загрузка из базы...</td>
                             </tr>
                         </tbody>
                     </table>
@@ -119,60 +130,23 @@
             </div>
         </section>
 
-        <!-- Deployment Architecture & Guide -->
-        <section class="section-container" id="deployGuide">
-            <div class="section-header">
-                <div>
-                    <h2 class="section-title">🛠️ Инструкция по развертыванию</h2>
-                    <p class="section-desc">Пошаговое руководство для подключения Supabase и деплоя на Render</p>
+        <!-- Telegram Bot Info Section -->
+        <section class="section-container">
+            <div class="bot-info-card">
+                <div class="bot-info-header">
+                    <div class="bot-icon">🤖</div>
+                    <div>
+                        <h3 class="bot-title">Telegram Бот: <span class="highlight">@fanat_mavro_robot</span></h3>
+                        <p class="text-muted">Бот подключен и настроен для работы с Mini App</p>
+                    </div>
                 </div>
-            </div>
-
-            <div class="guide-grid">
-                <!-- Card 1: Supabase -->
-                <div class="guide-card">
-                    <div class="guide-badge">Шаг 1</div>
-                    <h3 class="guide-title">⚡ Настройка Supabase</h3>
-                    <ol class="guide-steps">
-                        <li>Перейдите на <a href="https://supabase.com" target="_blank" rel="noopener">supabase.com</a> и создайте новый проект.</li>
-                        <li>В левом меню откройте <strong>SQL Editor</strong> -> <strong>New Query</strong>.</li>
-                        <li>Вставьте код из файла <a href="/static/sql" target="_blank"><code>supabase_schema.sql</code></a> и нажмите <strong>Run</strong>.</li>
-                        <li>Перейдите в <strong>Project Settings -> API</strong> и скопируйте:
-                            <br>• <code>Project URL</code>
-                            <br>• <code>anon public key</code>
-                        </li>
-                    </ol>
-                </div>
-
-                <!-- Card 2: Render -->
-                <div class="guide-card">
-                    <div class="guide-badge">Шаг 2</div>
-                    <h3 class="guide-title">🚀 Деплой на Render</h3>
-                    <ol class="guide-steps">
-                        <li>Зайдите на <a href="https://dashboard.render.com" target="_blank" rel="noopener">render.com</a> и выберите <strong>New + -> Web Service</strong>.</li>
-                        <li>Подключите GitHub репозиторий проекта.</li>
-                        <li>Укажите параметры:
-                            <br>• <strong>Runtime:</strong> Python 3
-                            <br>• <strong>Build Command:</strong> <code>pip install -r requirements.txt</code>
-                            <br>• <strong>Start Command:</strong> <code>gunicorn app:app</code>
-                        </li>
-                        <li>В разделе <strong>Environment Variables</strong> добавьте переменные:
-                            <br>• <code>SUPABASE_URL</code>
-                            <br>• <code>SUPABASE_KEY</code>
-                        </li>
-                        <li>Нажмите <strong>Create Web Service</strong>! 🚀</li>
-                    </ol>
-                </div>
-
-                <!-- Card 3: GitHub -->
-                <div class="guide-card">
-                    <div class="guide-badge">Шаг 3</div>
-                    <h3 class="guide-title">🐙 GitHub & Auto-Deploy</h3>
-                    <ol class="guide-steps">
-                        <li>Репозиторий уже настроен и запушен на ваш GitHub.</li>
-                        <li>Каждый <code>git push</code> автоматически инициирует сборку и деплой на Render.</li>
-                        <li>Файл <code>render.yaml</code> в репозитории позволяет развернуть проект в 1 клик через Blueprint!</li>
-                    </ol>
+                <div class="bot-actions-row">
+                    <a href="https://t.me/fanat_mavro_robot" target="_blank" class="btn btn-primary">
+                        ✈️ Открыть бота в Telegram
+                    </a>
+                    <button class="btn btn-secondary" id="setMenuButtonBtn">
+                        📌 Прикрепить кнопку меню в бота
+                    </button>
                 </div>
             </div>
         </section>
@@ -182,59 +156,56 @@
     <div id="addModal" class="modal-backdrop hidden">
         <div class="modal-dialog">
             <div class="modal-header">
-                <h3>Добавить монету в Supabase Watchlist</h3>
+                <h3>Добавить монету в Supabase</h3>
                 <button class="close-btn" id="closeAddModalBtn">&times;</button>
             </div>
             <div class="modal-body">
                 <form id="addCoinForm">
                     <div class="form-group">
                         <label for="coinSymbol">Символ монеты (Тикер):</label>
-                        <input type="text" id="coinSymbol" class="form-input" placeholder="Например: BTC, SOL, TON" required>
+                        <input type="text" id="coinSymbol" class="form-input" placeholder="Например: TON, BTC, SOL" required>
                     </div>
                     <div class="form-group">
-                        <label for="coinName">Название проекта:</label>
-                        <input type="text" id="coinName" class="form-input" placeholder="Например: Bitcoin, Solana">
+                        <label for="coinName">Название:</label>
+                        <input type="text" id="coinName" class="form-input" placeholder="Например: Toncoin, Solana">
                     </div>
                     <div class="form-group">
                         <label for="coinTarget">Целевая цена ($):</label>
-                        <input type="number" step="any" id="coinTarget" class="form-input" placeholder="Например: 125000">
+                        <input type="number" step="any" id="coinTarget" class="form-input" placeholder="10.5">
                     </div>
                     <div class="form-group">
-                        <label for="coinNotes">Заметка / Анализ:</label>
-                        <textarea id="coinNotes" class="form-input textarea" placeholder="Ваша стратегия, уровни поддержки/сопротивления..."></textarea>
+                        <label for="coinNotes">Заметка / Аналитика:</label>
+                        <textarea id="coinNotes" class="form-input textarea" placeholder="Стратегия покупки или продажи..."></textarea>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" id="cancelAddBtn">Отмена</button>
-                        <button type="submit" class="btn btn-primary" id="saveWatchlistBtn">Сохранить в базу</button>
+                        <button type="submit" class="btn btn-primary" id="saveWatchlistBtn">Сохранить</button>
                     </div>
                 </form>
             </div>
         </div>
     </div>
 
-    <!-- Modal: Supabase Settings & Live Tester -->
+    <!-- Modal: Settings -->
     <div id="settingsModal" class="modal-backdrop hidden">
         <div class="modal-dialog">
             <div class="modal-header">
-                <h3>⚙️ Подключение к Supabase</h3>
+                <h3>⚙️ Параметры подключения</h3>
                 <button class="close-btn" id="closeSettingsModalBtn">&times;</button>
             </div>
             <div class="modal-body">
-                <p class="modal-desc">
-                    Введите ваши ключи от Supabase для проверки подключения и генерации <code>.env</code> настроек.
-                </p>
                 <div class="form-group">
-                    <label for="testSupabaseUrl">Supabase Project URL:</label>
-                    <input type="text" id="testSupabaseUrl" class="form-input" placeholder="https://xyzproject.supabase.co">
+                    <label for="testSupabaseUrl">Supabase URL:</label>
+                    <input type="text" id="testSupabaseUrl" class="form-input" placeholder="https://uigojqsnyiekutccyscw.supabase.co">
                 </div>
                 <div class="form-group">
-                    <label for="testSupabaseKey">Supabase Anon Key:</label>
-                    <input type="password" id="testSupabaseKey" class="form-input" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...">
+                    <label for="testSupabaseKey">Supabase Key:</label>
+                    <input type="password" id="testSupabaseKey" class="form-input" placeholder="sb_publishable_...">
                 </div>
                 <div id="testResultBox" class="test-result hidden"></div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" id="testConnectionBtn">🔍 Тестировать связь</button>
-                    <button type="button" class="btn btn-primary" id="closeSettingsBtn">Готово</button>
+                    <button type="button" class="btn btn-secondary" id="testConnectionBtn">🔍 Проверить базу</button>
+                    <button type="button" class="btn btn-primary" id="closeSettingsBtn">Закрыть</button>
                 </div>
             </div>
         </div>
@@ -242,8 +213,7 @@
 
     <footer class="footer">
         <div class="footer-content">
-            <p>© 2026 COIN HUB • Ready for Production on Render & Supabase</p>
-            <p class="text-muted">Разработано с акцентом на производительность и надежность.</p>
+            <p>© 2026 COIN HUB • Telegram Mini App & Supabase</p>
         </div>
     </footer>
 
